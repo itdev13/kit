@@ -269,41 +269,83 @@ export default function Dashboard() {
         </div>
         */}
 
-        {/* Telegram Messaging Connector Cross-Promo Banner — now live on the HighLevel Marketplace.
-            Marketplace app id: 69b67036e65bf138703a31d7 */}
-        <div className="mb-4 bg-gradient-to-r from-sky-500 via-cyan-500 to-blue-600 rounded-xl px-5 py-3 flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              {/* Paper-plane (Telegram) icon */}
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M21.94 4.3 2.9 11.64c-1.24.5-1.23 1.2-.22 1.5l4.87 1.52 1.88 5.77c.23.63.11.88.77.88.51 0 .74-.23 1.02-.51l2.36-2.3 4.9 3.62c.9.5 1.55.24 1.78-.84l3.2-15.1c.33-1.32-.5-1.92-1.36-1.53Z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-white font-semibold text-sm">🚀 Telegram Messaging Connector — now live on the HighLevel Marketplace</p>
-                <span className="hidden sm:inline-flex items-center bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-white/30">
-                  Free to install
-                </span>
+        {/* Cross-Promo Banners — HelmDesk (left) + Telegram (right), side by side on md+, stacked on mobile. */}
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* HelmDesk — Support Ticket System & Helpdesk.
+              Marketplace app id: 6a42b01a904c53a589aae692 */}
+          <div className="bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600 rounded-xl px-5 py-4 flex flex-col shadow-md">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                {/* Ticket / lifebuoy icon */}
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
               </div>
-              <p className="text-sky-50 text-xs mt-0.5">
-                Two-way Telegram messaging inside your Conversations inbox — Bot &amp; Phone Account support, media &amp; attachment sync, auto contact creation, 10+ workflow actions, 6+ triggers, and group management.
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-semibold text-sm">🎧 HelmDesk — white-label helpdesk &amp; support tickets</p>
+                  <span className="hidden sm:inline-flex items-center bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-white/30">
+                    White-label
+                  </span>
+                </div>
+                <p className="text-violet-50 text-xs mt-0.5">
+                  Turn every inbound SMS, Email, WhatsApp, Live Chat, FB &amp; IG message into a tracked support ticket — SLA countdowns, Kanban board, routing, and a fully branded client portal. Resell it as your own.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 mt-3">
+              <a
+                href="https://marketplace.gohighlevel.com/integration/6a42b01a904c53a589aae692"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 bg-white hover:bg-violet-50 text-purple-700 text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+              >
+                Install now
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </a>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <a
-              href="https://marketplace.gohighlevel.com/integration/69b67036e65bf138703a31d7/versions/69cd720d516a315c8f08c6e4"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-white hover:bg-sky-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
-            >
-              Install now
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
-            </a>
+
+          {/* Telegram Messaging Connector — now live on the HighLevel Marketplace.
+              Marketplace app id: 69b67036e65bf138703a31d7 */}
+          <div className="bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 rounded-xl px-5 py-4 flex flex-col shadow-md">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                {/* Paper-plane (Telegram) icon */}
+                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M21.94 4.3 2.9 11.64c-1.24.5-1.23 1.2-.22 1.5l4.87 1.52 1.88 5.77c.23.63.11.88.77.88.51 0 .74-.23 1.02-.51l2.36-2.3 4.9 3.62c.9.5 1.55.24 1.78-.84l3.2-15.1c.33-1.32-.5-1.92-1.36-1.53Z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-semibold text-sm">🚀 Telegram Messaging Connector — now live on the Marketplace</p>
+                  <span className="hidden sm:inline-flex items-center bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-white/30">
+                    Free to install
+                  </span>
+                </div>
+                <p className="text-sky-50 text-xs mt-0.5">
+                  Two-way Telegram messaging inside your Conversations inbox — Bot &amp; Phone Account support, media &amp; attachment sync, auto contact creation, 10+ workflow actions, 6+ triggers, and group management.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 mt-3">
+              <a
+                href="https://marketplace.gohighlevel.com/integration/69b67036e65bf138703a31d7/versions/69cd720d516a315c8f08c6e4"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 bg-white hover:bg-sky-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+              >
+                Install now
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </a>
+            </div>
           </div>
+
         </div>
 
         {/* Custom Work / AI Agents Promo Banner — temporarily hidden */}
