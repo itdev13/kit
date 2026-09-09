@@ -47,8 +47,7 @@ class GHLService {
         expiresIn: response.data.expires_in,
         locationId: response.data.locationId,
         companyId: response.data.companyId,
-        // GHL returns the OAuth-authorizing user's id on the token response. We use it later
-        // to fetch the installer's email/name (win-back email on uninstall).
+        // GHL returns the OAuth-authorizing user's id on the token response.
         userId: response.data.userId || null
       };
     } catch (error) {
@@ -57,55 +56,6 @@ class GHLService {
     }
   }
 
-  /**
-   * Fetch a single GHL user by id (the installer). Used at install time to capture
-   * `email` / `name` so we can send a win-back email if/when the app is uninstalled.
-   * GET /users/{userId} — requires the `users.readonly` scope.
-   * Returns null on any error so callers can fail open.
-   */
-  async getUser(locationId, userId) {
-    if (!userId) return null;
-    try {
-      const response = await this.apiRequest('GET', `/users/${userId}`, locationId, null, null);
-      const u = response?.user || response || {};
-      return {
-        id: u.id || userId,
-        email: u.email || null,
-        name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || null
-      };
-    } catch (error) {
-      logger.warn('getUser failed (non-blocking):', { userId, error: error.message });
-      return null;
-    }
-  }
-
-  /**
-   * Token-direct variant of getUser. Used during the OAuth callback before any locationId-scoped
-   * token doc has been written to Mongo (especially for COMPANY-level installs, where there's no
-   * locationId on the token at all). Hits GET /users/{userId} with the access token we just got
-   * from the code-exchange. Never throws — returns null on any error.
-   */
-  async getUserWithToken(userId, accessToken) {
-    if (!userId || !accessToken) return null;
-    try {
-      const response = await axios.get(`${this.baseURL}/users/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'Version': '2021-07-28'
-        }
-      });
-      const u = response.data?.user || response.data || {};
-      return {
-        id: u.id || userId,
-        email: u.email || null,
-        name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || null
-      };
-    } catch (error) {
-      logger.warn('getUserWithToken failed (non-blocking):', { userId, error: error.response?.data || error.message });
-      return null;
-    }
-  }
 
   /**
    * Refresh token

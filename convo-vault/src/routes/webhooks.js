@@ -11,8 +11,6 @@ const ThrottleQueue = require('../utils/throttleQueue');
 const AppConfig = require('../models/AppConfig');
 const { ghlSignatureGuard } = require('../middleware/ghlSignature');
 
-// Win-back email on uninstall has been removed entirely.
-
 const tokenGenQueue = new ThrottleQueue({ name: 'proactive-token-gen', delayMs: 350 });
 
 /**
@@ -287,8 +285,6 @@ async function handleUninstall(data) {
   logger.info('📥 UNINSTALL webhook', { appId, matchedLite: isLite, companyId, locationId: locationId || '(company-level)' });
 
   try {
-    // (Win-back email removed — no installer snapshot / outreach on uninstall.)
-
     // Find active installation
     const query = locationId
       ? { appId, locationId, status: 'active' }
@@ -341,8 +337,6 @@ async function handleUninstall(data) {
     // SECURITY: Archive OAuth tokens before deletion
     // Keeps audit trail while preventing access
     await archiveAndDeleteTokens(locationId, companyId, installation._id, data, isLite);
-
-    // (Win-back email removed — no outreach on uninstall.)
 
     // Hard-delete referral record on uninstall so reinstalls don't inherit stale attribution
     try {
