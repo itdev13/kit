@@ -14,9 +14,9 @@ import { getMessageTypeDisplay, getMessageTypeIcon } from '../../utils/messageTy
 import { copyToClipboard } from '../../utils/clipboard';
 import dayjs from 'dayjs';
 
-// Default date range: 6 months
+// Default date range: 2 years
 const getDefaultDates = () => ({
-  startDate: dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
+  startDate: dayjs().subtract(2, 'year').format('YYYY-MM-DD'),
   endDate: dayjs().format('YYYY-MM-DD')
 });
 
@@ -238,9 +238,9 @@ export default function MessagesTab() {
     const hasUserDates = filters.startDate || filters.endDate;
     setUsingDefaultDates(!hasUserDates);
 
-    // Calculate default dates (last 31 days) if user didn't select any
+    // Calculate default dates (last 2 years) if user didn't select any
     const defaultEndDate = dayjs().endOf('day');
-    const defaultStartDate = dayjs().subtract(6, 'month').startOf('day');
+    const defaultStartDate = dayjs().subtract(2, 'year').startOf('day');
 
     try {
       // Build filters for estimate - use current filter state or defaults
@@ -275,9 +275,9 @@ export default function MessagesTab() {
     setProcessing(true);
     setEstimateError(null);
 
-    // Calculate default dates (last 31 days) if user didn't select any
+    // Calculate default dates (last 2 years) if user didn't select any
     const defaultEndDate = dayjs().endOf('day');
-    const defaultStartDate = dayjs().subtract(6, 'month').startOf('day');
+    const defaultStartDate = dayjs().subtract(2, 'year').startOf('day');
 
     try {
       const exportFilters = {
