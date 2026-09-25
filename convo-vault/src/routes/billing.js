@@ -1400,7 +1400,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       }
 
       // CAP at the first MAX_CONTACTS contacts EXPLICITLY.
-      const MAX_CONTACTS = 100;
+      const MAX_CONTACTS = 200;
       let cappedAt500 = false; // field name kept for the UI contract; means "capped at MAX_CONTACTS"
       let contactIdsFilter = resolvedIds;
       if (resolvedContactCount > MAX_CONTACTS) {
@@ -1410,15 +1410,22 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       }
       logger.info('messagesByTag: contact resolution complete', { tags: tagsFilter, resolvedContactCount, usedContactCount: contactIdsFilter.length, cap: MAX_CONTACTS, cappedAt500 });
 
-      // Gather messages by calling the SAME message export API the Messages tab uses
-      // (GET /conversations/messages/export via ghlService.exportMessages), once per contactId.
-      // channel + startDate/endDate are passed straight to GHL — identical behavior/output to the
-      // Messages tab, just scoped to each tagged contact. No conversation discovery needed.
-      // channel values mirror the Messages tab: '' (all except email), SMS, Email, WhatsApp,
-      // Facebook, Instagram.
+      // Gather messages per tagged contact. Two paths depending on channel:
+      //
+      //  • Live Chat (channel === 'LiveChat'): the bulk export API (/conversations/messages/export)
+      //    does NOT return Live Chat / Conversation-AI messages — they aren't an exportable channel.
+      //    So for Live Chat we discover each contact's conversations, then fetch each conversation's
+      //    messages with type=TYPE_LIVE_CHAT (limit 300, paginated via lastMessageId).
+      //
+      //  • All other channels ('' / SMS / Email / WhatsApp / Facebook / Instagram): the SAME message
+      //    export API the Messages tab uses (ghlService.exportMessages), once per contactId.
+      //
+      // Date filters are intentionally NOT applied here — Messages by Tag exports the full history.
+      const isLiveChat = channelFilter === 'LiveChat';
       const allMessages = [];
       const CONTACT_PARALLEL = 5;
       const PAGE_LIMIT = 100;
+      const LIVECHAT_PAGE_LIMIT = 300;
       let contactsDone = 0;
       let failedContacts = 0;
       for (let i = 0; i < contactIdsFilter.length; i += CONTACT_PARALLEL) {
@@ -1426,23 +1433,50 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         const results = await Promise.allSettled(
           batch.map(async (cid) => {
             const msgs = [];
-            let cursor = null;
-            let pages = 0;
-            while (true) {
-              const opts = { contactId: cid, limit: PAGE_LIMIT };
-              if (channelFilter) opts.channel = channelFilter;
-              if (filters?.startDate) opts.startDate = filters.startDate;
-              if (filters?.endDate) opts.endDate = filters.endDate;
-              if (cursor) opts.cursor = cursor;
-              const resp = await withRetry(() => ghlService.exportMessages(locationId, opts));
-              const pageMsgs = resp.messages || [];
-              pages++;
-              msgs.push(...pageMsgs);
-              cursor = resp.nextCursor || null;
-              if (!cursor || pageMsgs.length < PAGE_LIMIT) break;
+            let apiCalls = 0;
+
+            if (isLiveChat) {
+              // Discover this contact's conversations, then walk each for Live Chat messages.
+              // Live Chat / Conversation-AI threads surface under two GHL message types —
+              // TYPE_LIVE_CHAT and TYPE_WEBCHAT — so we fetch both per conversation.
+              const LIVECHAT_TYPES = ['TYPE_LIVE_CHAT', 'TYPE_WEBCHAT'];
+              const convoResult = await withRetry(() => ghlService.searchConversations(locationId, { contactId: cid, limit: 100 }));
+              apiCalls++;
+              const convos = convoResult.conversations || [];
+              for (const convo of convos) {
+                const convId = convo.id;
+                for (const msgType of LIVECHAT_TYPES) {
+                  let lastMessageId = null;
+                  while (true) {
+                    const msgOptions = { limit: LIVECHAT_PAGE_LIMIT, type: msgType };
+                    if (lastMessageId) msgOptions.lastMessageId = lastMessageId;
+                    const r = await withRetry(() => ghlService.getMessages(locationId, convId, msgOptions));
+                    apiCalls++;
+                    const wrapper = r.messages || {};
+                    const pageMsgs = wrapper.messages || [];
+                    msgs.push(...pageMsgs.map(m => ({ ...m, conversationId: convId, contactId: cid })));
+                    if (pageMsgs.length < LIVECHAT_PAGE_LIMIT || !wrapper.nextPage) break;
+                    lastMessageId = wrapper.lastMessageId;
+                  }
+                }
+              }
+            } else {
+              // Channel/export-API path (SMS, Email, WhatsApp, FB, IG, or all-except-email).
+              let cursor = null;
+              while (true) {
+                const opts = { contactId: cid, limit: PAGE_LIMIT };
+                if (channelFilter) opts.channel = channelFilter;
+                if (cursor) opts.cursor = cursor;
+                const resp = await withRetry(() => ghlService.exportMessages(locationId, opts));
+                apiCalls++;
+                const pageMsgs = resp.messages || [];
+                msgs.push(...pageMsgs);
+                cursor = resp.nextCursor || null;
+                if (!cursor || pageMsgs.length < PAGE_LIMIT) break;
+              }
             }
-            // Per-contact API-call log: how many export-API hits (pages) and messages for this contact.
-            logger.info('messagesByTag: contact fetched', { contactId: cid, apiCalls: pages, messages: msgs.length, channel: channelFilter || 'all' });
+
+            logger.info('messagesByTag: contact fetched', { contactId: cid, apiCalls, messages: msgs.length, channel: channelFilter || 'all' });
             return msgs;
           })
         );
@@ -1459,7 +1493,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         logger.info('messagesByTag: progress', { contactsDone, totalContacts: contactIdsFilter.length, messagesSoFar: allMessages.length });
       }
 
-      logger.info('messagesByTag: fetched', { totalMessages: allMessages.length, contacts: contactIdsFilter.length, failedContacts, channel: channelFilter || 'all' });
+      logger.info('messagesByTag: fetched', { totalMessages: allMessages.length, contacts: contactIdsFilter.length, failedContacts, channel: channelFilter || 'all', liveChat: isLiveChat });
 
       // Split into 5,000-message chunks to stay under MongoDB's 16MB BSON limit.
       // Lambda BATCH_SIZE is also 5000 so each invocation loads exactly one chunk doc.

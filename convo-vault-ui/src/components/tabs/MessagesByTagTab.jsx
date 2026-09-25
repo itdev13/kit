@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { billingAPI } from '../../api/billing';
 import { tagsAPI } from '../../api/customFields';
-import { Button, Select, DatePicker, message as antMessage } from 'antd';
-import dayjs from 'dayjs';
+import { Button, Select, message as antMessage } from 'antd';
 import ExportEstimateModal from '../ExportEstimateModal';
 import ExportProgress from '../ExportProgress';
 
@@ -35,8 +34,6 @@ export default function MessagesByTagTab() {
 
   // Filters
   const [channel, setChannel] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
 
   // Load tags on mount.
   useEffect(() => {
@@ -71,9 +68,7 @@ export default function MessagesByTagTab() {
 
   const buildExportFilters = () => ({
     tags: selectedTags,
-    channel: channel || undefined,
-    startDate: startDate || undefined,
-    endDate: endDate || undefined
+    channel: channel || undefined
   });
 
   const handleGetEstimate = async () => {
@@ -216,41 +211,18 @@ export default function MessagesByTagTab() {
               { value: 'WhatsApp', label: 'WhatsApp' },
               { value: 'Facebook', label: 'Facebook' },
               { value: 'Instagram', label: 'Instagram' },
+              { value: 'LiveChat', label: 'Live Chat (Conversation AI)' },
             ]}
           />
         </div>
 
-        {/* Date range */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
-            <DatePicker
-              value={startDate ? dayjs(startDate) : null}
-              onChange={(date) => setStartDate(date ? date.format('YYYY-MM-DD') : '')}
-              className="w-full"
-              size="large"
-              placeholder="Select start date"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
-            <DatePicker
-              value={endDate ? dayjs(endDate) : null}
-              onChange={(date) => setEndDate(date ? date.format('YYYY-MM-DD') : '')}
-              className="w-full"
-              size="large"
-              placeholder="Select end date"
-            />
-          </div>
-        </div>
-
-        {/* Resolved contact count + explicit 500 cap notice (shown after an estimate) */}
+        {/* Resolved contact count + explicit cap notice (shown after an estimate) */}
         {resolvedContactCount != null && (
           <div className={`mb-4 p-3 rounded-lg border ${cappedAt500 ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
             <p className={`text-sm ${cappedAt500 ? 'text-amber-800' : 'text-blue-800'}`}>
               <strong>{resolvedContactCount.toLocaleString()}</strong> contact{resolvedContactCount === 1 ? '' : 's'} matched the selected tag{selectedTags.length === 1 ? '' : 's'}.
               {cappedAt500 && (
-                <> <strong>Only the first 100 contacts are included</strong> in this export.</>
+                <> <strong>Only the first 200 contacts are included</strong> in this export.</>
               )}
             </p>
           </div>
@@ -270,7 +242,8 @@ export default function MessagesByTagTab() {
         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800">
             <strong>How it works:</strong> we resolve every contact carrying the selected tag(s), then gather their
-            messages (filtered by channel when set). <strong>Only the first 100 contacts</strong> are included.
+            messages (filtered by channel when set). Choose <strong>Live Chat</strong> to export Conversation-AI /
+            live chat threads. <strong>Only the first 200 contacts</strong> are included.
             Pricing: <strong>$0.004 / message</strong> — no volume discount.
           </p>
         </div>
