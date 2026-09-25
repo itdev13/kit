@@ -1421,7 +1421,14 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       //    export API the Messages tab uses (ghlService.exportMessages), once per contactId.
       //
       // Date filters are intentionally NOT applied here — Messages by Tag exports the full history.
-      const isLiveChat = channelFilter === 'LiveChat';
+      // Live Chat and Web Chat are NOT returned by the bulk export API (they aren't exportable
+      // channels), so each is gathered via the per-conversation get-messages path with its own
+      // GHL message type. "All Channels Except Email" therefore naturally excludes both.
+      const perConversationType =
+        channelFilter === 'LiveChat' ? 'TYPE_LIVE_CHAT'
+        : channelFilter === 'WebChat' ? 'TYPE_WEBCHAT'
+        : null;
+      const isPerConversation = perConversationType !== null;
       const allMessages = [];
       const CONTACT_PARALLEL = 5;
       const PAGE_LIMIT = 100;
@@ -1435,29 +1442,25 @@ router.post('/estimate', authenticateSession, async (req, res) => {
             const msgs = [];
             let apiCalls = 0;
 
-            if (isLiveChat) {
-              // Discover this contact's conversations, then walk each for Live Chat messages.
-              // Live Chat / Conversation-AI threads surface under two GHL message types —
-              // TYPE_LIVE_CHAT and TYPE_WEBCHAT — so we fetch both per conversation.
-              const LIVECHAT_TYPES = ['TYPE_LIVE_CHAT', 'TYPE_WEBCHAT'];
+            if (isPerConversation) {
+              // Discover this contact's conversations, then walk each for the selected type
+              // (TYPE_LIVE_CHAT for Live Chat, TYPE_WEBCHAT for Web Chat).
               const convoResult = await withRetry(() => ghlService.searchConversations(locationId, { contactId: cid, limit: 100 }));
               apiCalls++;
               const convos = convoResult.conversations || [];
               for (const convo of convos) {
                 const convId = convo.id;
-                for (const msgType of LIVECHAT_TYPES) {
-                  let lastMessageId = null;
-                  while (true) {
-                    const msgOptions = { limit: LIVECHAT_PAGE_LIMIT, type: msgType };
-                    if (lastMessageId) msgOptions.lastMessageId = lastMessageId;
-                    const r = await withRetry(() => ghlService.getMessages(locationId, convId, msgOptions));
-                    apiCalls++;
-                    const wrapper = r.messages || {};
-                    const pageMsgs = wrapper.messages || [];
-                    msgs.push(...pageMsgs.map(m => ({ ...m, conversationId: convId, contactId: cid })));
-                    if (pageMsgs.length < LIVECHAT_PAGE_LIMIT || !wrapper.nextPage) break;
-                    lastMessageId = wrapper.lastMessageId;
-                  }
+                let lastMessageId = null;
+                while (true) {
+                  const msgOptions = { limit: LIVECHAT_PAGE_LIMIT, type: perConversationType };
+                  if (lastMessageId) msgOptions.lastMessageId = lastMessageId;
+                  const r = await withRetry(() => ghlService.getMessages(locationId, convId, msgOptions));
+                  apiCalls++;
+                  const wrapper = r.messages || {};
+                  const pageMsgs = wrapper.messages || [];
+                  msgs.push(...pageMsgs.map(m => ({ ...m, conversationId: convId, contactId: cid })));
+                  if (pageMsgs.length < LIVECHAT_PAGE_LIMIT || !wrapper.nextPage) break;
+                  lastMessageId = wrapper.lastMessageId;
                 }
               }
             } else {
@@ -1493,7 +1496,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         logger.info('messagesByTag: progress', { contactsDone, totalContacts: contactIdsFilter.length, messagesSoFar: allMessages.length });
       }
 
-      logger.info('messagesByTag: fetched', { totalMessages: allMessages.length, contacts: contactIdsFilter.length, failedContacts, channel: channelFilter || 'all', liveChat: isLiveChat });
+      logger.info('messagesByTag: fetched', { totalMessages: allMessages.length, contacts: contactIdsFilter.length, failedContacts, channel: channelFilter || 'all', perConversationType });
 
       // Split into 5,000-message chunks to stay under MongoDB's 16MB BSON limit.
       // Lambda BATCH_SIZE is also 5000 so each invocation loads exactly one chunk doc.
@@ -1536,7 +1539,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       }
 
       const total = allMessages.length;
-      const unitPrice = 0.004;
+      const unitPrice = 0.05;
       const finalAmount = total * unitPrice;
       return res.json({
         success: true,
@@ -2777,8 +2780,8 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Special messages export' }];
     } else if (exportType === 'messagesByTag') {
-      // Messages by Tag: standalone billing (flat $0.004/msg, single meter charge, no discount).
-      const unitPrice = 0.004;
+      // Messages by Tag: standalone billing (flat $0.05/msg, single meter charge, no discount).
+      const unitPrice = 0.05;
       const finalAmount = totalItems * unitPrice;
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Messages by tag export' }];
