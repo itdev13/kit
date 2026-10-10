@@ -809,31 +809,23 @@ export default function ExportEstimateModal({
           </div>
           )}
 
-          {/* Payment note — slim inline line (was a large yellow box) */}
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 pt-1">
-            <svg className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Payment note — wallet + alternative (Wise / call) combined */}
+          <div className="flex items-start gap-1.5 text-xs text-gray-500 pt-1">
+            <svg className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            <span>Charged to your <strong className="text-gray-700 font-medium">wallet balance</strong> — no card required.</span>
-          </div>
-
-          {/* Alternative payment options (red note) */}
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2 mt-2">
-            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm text-red-800">
-              <strong>Prefer another payment method?</strong> You can pay by GHL wallet or <strong>Wise</strong>.
-              If the wallet charge fails or has no funds, we&apos;ll sort out the best way to pay —{' '}
+            <span>
+              Charged to your <strong className="text-gray-700 font-medium">wallet balance</strong> — no card required.
+              If you prefer <strong className="text-gray-700 font-medium">Wise</strong>, or your wallet has no funds,{' '}
               <a
                 href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-semibold text-red-700 underline hover:text-red-900"
+                className="font-semibold text-indigo-600 underline hover:text-indigo-800"
               >
                 book a quick call
               </a>.
-            </p>
+            </span>
           </div>
 
           {/* Action Buttons */}
