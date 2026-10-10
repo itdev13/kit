@@ -165,16 +165,16 @@ export default function ExportEstimateModal({
                     then run the export again — your data will be ready in seconds.
                   </p>
                   <p className="text-sm text-red-800 mt-2">
-                    Don&apos;t want to top up the wallet? We also accept <strong>Wise</strong> and other payment
-                    methods. We&apos;re available any time —{' '}
+                    You can pay by <strong>GHL wallet</strong> or <strong>Wise</strong>. Prefer Wise, or need a
+                    hand?{' '}
                     <a
                       href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-semibold text-red-700 underline hover:text-red-900"
                     >
-                      book a quick call
-                    </a>{' '}and we&apos;ll set up the best way to pay for you.
+                      Book a quick call
+                    </a>{' '}and we&apos;ll get you sorted.
                   </p>
                 </div>
               </div>
@@ -817,25 +817,18 @@ export default function ExportEstimateModal({
             <span>Charged to your <strong className="text-gray-700 font-medium">wallet balance</strong> — no card required.</span>
           </div>
 
-          {/* Alternative payment options (red note) */}
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2 mt-2">
-            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm text-red-800">
-              <strong>Prefer a different payment method?</strong> We charge the GHL wallet by default, but we
-              also support <strong>Wise</strong> and other options. If the wallet charge fails or your wallet
-              doesn&apos;t have funds, we&apos;ll help you find the best way to pay. We&apos;re available any time —{' '}
-              <a
-                href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-red-700 underline hover:text-red-900"
-              >
-                book a quick call
-              </a>{' '}and we&apos;ll sort it out with you.
-            </p>
-          </div>
+          {/* Alternative payment options — slim one-liner */}
+          <p className="text-xs text-red-700 pt-1">
+            Pay by GHL wallet or <strong>Wise</strong> —{' '}
+            <a
+              href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline hover:text-red-900"
+            >
+              book a quick call
+            </a>.
+          </p>
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-2">
