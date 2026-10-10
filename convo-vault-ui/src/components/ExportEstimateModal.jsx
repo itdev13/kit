@@ -921,18 +921,24 @@ export default function ExportEstimateModal({
             </p>
           </div>
 
-          {/* Alternative payment options — slim one-liner */}
-          <p className="text-xs text-red-700">
-            Pay by GHL wallet or <strong>Wise</strong> —{' '}
-            <a
-              href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold underline hover:text-red-900"
-            >
-              book a quick call
-            </a>.
-          </p>
+          {/* Alternative payment options (red note) */}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-red-800">
+              <strong>Prefer another payment method?</strong> You can pay by GHL wallet or <strong>Wise</strong>.
+              If the wallet charge fails or has no funds, we&apos;ll sort out the best way to pay —{' '}
+              <a
+                href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-red-700 underline hover:text-red-900"
+              >
+                book a quick call
+              </a>.
+            </p>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex gap-3">
