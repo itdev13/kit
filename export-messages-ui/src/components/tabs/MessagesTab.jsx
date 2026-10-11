@@ -754,7 +754,7 @@ export default function MessagesTab() {
             💬 Sample preview: {messages.length.toLocaleString()} of {totalMessages.toLocaleString()} messages •
             {messages.filter(m => m.direction === 'inbound').length} received •
             {messages.filter(m => m.direction === 'outbound').length} sent
-            {hasMore && <span className="ml-4 text-indigo-600 font-medium">• Export to download all {totalMessages.toLocaleString()}</span>}
+            {hasMore && <button type="button" onClick={handleGetEstimate} className="ml-4 text-indigo-600 font-medium underline hover:text-indigo-800 bg-transparent border-0 p-0 cursor-pointer">• Export to download all {totalMessages.toLocaleString()}</button>}
           </div>
         </div>
       )}
