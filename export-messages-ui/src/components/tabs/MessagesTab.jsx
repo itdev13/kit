@@ -582,18 +582,23 @@ export default function MessagesTab() {
         </div>
       )}
 
-      {/* Pagination Controls */}
+      {/* Preview notice — the list is a SAMPLE (first page only). To keep the full dataset,
+          users export it rather than paging through the preview. */}
       {!isLoading && !error && messages.length > 0 && (
-        <div className="flex items-center justify-between bg-white border-1 border-solid border-gray-200 rounded-xl p-4">
-          <span className="text-sm text-gray-600">Showing {loadedMessages.toLocaleString()} of {totalMessages.toLocaleString()} messages</span>
-          <div className="flex gap-2">
-            <Button onClick={() => setCursor(null)} disabled={!cursor} size="large">
-              First Page
-            </Button>
-            <Button onClick={() => setCursor(nextCursorValue)} disabled={!hasMore} type="primary" size="large">
-              Next Page
-            </Button>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-indigo-800">
+              This is a <strong>sample preview</strong> of your first {messages.length.toLocaleString()} messages
+              {totalMessages > 0 && <> out of <strong>{totalMessages.toLocaleString()}</strong></>}.
+              Export to download the <strong>complete data</strong> as CSV or JSON.
+            </p>
           </div>
+          <Button type="primary" size="large" onClick={handleGetEstimate} className="flex-shrink-0">
+            Export Full Data
+          </Button>
         </div>
       )}
 
@@ -746,10 +751,10 @@ export default function MessagesTab() {
       {messages.length > 0 && (
         <div className="bg-gray-50 border-1 border-solid border-gray-200 rounded-xl p-4">
           <div className="text-sm text-gray-600">
-            💬 Showing {loadedMessages.toLocaleString()} of {totalMessages.toLocaleString()} messages •
+            💬 Sample preview: {messages.length.toLocaleString()} of {totalMessages.toLocaleString()} messages •
             {messages.filter(m => m.direction === 'inbound').length} received •
             {messages.filter(m => m.direction === 'outbound').length} sent
-            {hasMore && <span className="ml-4 text-blue-600 font-medium">• More pages available</span>}
+            {hasMore && <span className="ml-4 text-indigo-600 font-medium">• Export to download all {totalMessages.toLocaleString()}</span>}
           </div>
         </div>
       )}
