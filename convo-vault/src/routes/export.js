@@ -52,18 +52,23 @@ router.get('/messages', authenticateSession, async (req, res) => {
       });
     }
 
-    // Sanitize limit (max 500 for export)
-    const sanitizedLimit = sanitizeLimit(limit, 100, 500);
+    // PREVIEW ENDPOINT — sample only.
+    // This route powers the in-app preview grid. It is deliberately capped to a SINGLE page and
+    // ignores any pagination cursor, so neither the UI nor a scripted caller can walk the cursor
+    // to pull the whole dataset for free. The full, paginated fetch is the paid export (Lambda),
+    // which is unaffected by this route. Cap the page at 50 regardless of the requested limit.
+    const PREVIEW_LIMIT = 50;
+    const sanitizedLimit = Math.min(sanitizeLimit(limit, 50, 500), PREVIEW_LIMIT);
 
-    logger.info('Advanced message export', { 
-      locationId, 
-      channel, 
+    logger.info('Advanced message export (preview)', {
+      locationId,
+      channel,
       conversationId,
       hasDateFilter: !!(startDate && endDate),
       limit: sanitizedLimit
     });
 
-    // Build export options
+    // Build export options. NOTE: cursor is intentionally NOT applied — preview is page-1 only.
     const options = { limit: sanitizedLimit };
     if (channel) options.channel = channel;
     if (startDate) {
@@ -81,7 +86,7 @@ router.get('/messages', authenticateSession, async (req, res) => {
     if (userIds) {
       options.userIds = Array.isArray(userIds) ? userIds : [userIds];
     }
-    if (cursor) options.cursor = cursor;
+    // cursor intentionally dropped — preview is locked to page 1 (anti-scrape).
     // Lite ("Export Messages") app sends X-App: lite → use the lite GHL token for this location,
     // otherwise the premium-scoped lookup finds no token for a lite-only location and 401s.
     if (req.get('X-App') === 'lite') options.lite = true;
@@ -110,7 +115,10 @@ router.get('/messages', authenticateSession, async (req, res) => {
           meta: msg.meta
         })),
         pagination: {
-          nextCursor: result.nextCursor,
+          // Preview is page-1 only. We expose hasMore purely so the UI can show the
+          // "Export to download all" prompt — but we do NOT return a usable cursor, so the
+          // dataset can't be walked by repeatedly calling this endpoint.
+          nextCursor: null,
           hasMore: !!result.nextCursor
         }
       },
@@ -233,6 +241,19 @@ router.get('/contacts', authenticateSession, async (req, res) => {
  * Handles cursor-based pagination automatically
  */
 router.get('/messages/all', authenticateSession, async (req, res) => {
+  // DISABLED (anti-scrape). This route returned the ENTIRE message dataset in one response with no
+  // billing — a free full export. No UI uses it (real exports go through billing → Lambda), so it
+  // is closed off. Callers must use the paid export flow instead.
+  logger.warn('Blocked /export/messages/all (disabled — use the paid export flow)', {
+    locationId: req.query?.locationId,
+    userId: req.user?.userId || req.session?.userId
+  });
+  return res.status(410).json({
+    success: false,
+    error: 'This endpoint is no longer available. Please use the Export feature to download your data.'
+  });
+
+  // eslint-disable-next-line no-unreachable
   try {
     const { locationId, channel, startDate, endDate, contactId } = req.query;
 
