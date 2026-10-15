@@ -2305,7 +2305,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       }
 
       const total = recordingRecords.length;
-      const unitPrice = 0.05;
+      const unitPrice = 0.50;
       const finalAmount = total * unitPrice;
       return res.json({
         success: true,
@@ -3002,8 +3002,8 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Call transcriptions export' }];
     } else if (exportType === 'callRecordings') {
-      // Call Recordings: standalone billing (flat $0.05/recording, single meter charge, no discount).
-      const unitPrice = 0.05;
+      // Call Recordings: standalone billing (flat $0.50/recording, single meter charge, no discount).
+      const unitPrice = 0.50;
       const finalAmount = totalItems * unitPrice;
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Call recordings export' }];

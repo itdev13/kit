@@ -234,7 +234,7 @@ export default function CallRecordingsTab() {
           <p className="text-sm text-amber-800">
             <strong>Heavy task:</strong> we walk conversations for the selected contacts, find call &amp; voicemail
             messages, and confirm a recording exists for each one. The export is a CSV with a
-            <strong> one-click download link</strong> per recording. Pricing: <strong>$0.05 per recording</strong> (no volume discount).
+            <strong> one-click download link</strong> per recording. Pricing: <strong>$0.50 per recording</strong> (no volume discount).
           </p>
         </div>
       </div>

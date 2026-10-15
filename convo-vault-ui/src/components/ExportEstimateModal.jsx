@@ -747,7 +747,7 @@ export default function ExportEstimateModal({
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-700">Price per Recording</span>
-                    <span className="font-medium text-gray-800">$0.05</span>
+                    <span className="font-medium text-gray-800">$0.50</span>
                   </div>
                   <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
                     Heavy task — we walk the selected contacts&apos; conversations, scan every call, and
