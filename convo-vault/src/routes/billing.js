@@ -2196,7 +2196,10 @@ router.post('/estimate', authenticateSession, async (req, res) => {
             const out = [];
             let cursor = undefined;
             while (true) {
-              const msgOptions = { limit: PAGE_SIZE, type: 'TYPE_CALL,TYPE_CAMPAIGN_VOICEMAIL' };
+              // NOTE: GHL's getMessages ?type= filter only accepts TYPE_CALL (TYPE_CAMPAIGN_VOICEMAIL
+              // is NOT a valid value here and 400s the whole request). We filter to TYPE_CALL at the
+              // API, then keep the client-side mayHaveRecording() guard as a belt-and-suspenders check.
+              const msgOptions = { limit: PAGE_SIZE, type: 'TYPE_CALL' };
               if (cursor) msgOptions.lastMessageId = cursor;
               const result = await withRetry(() => ghlService.getMessages(locationId, cId, msgOptions));
               const wrapper = result.messages || {};
