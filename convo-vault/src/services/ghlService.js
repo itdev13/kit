@@ -783,6 +783,62 @@ class GHLService {
   }
 
   /**
+   * Call recording API for a single message.
+   * Reference: https://marketplace.gohighlevel.com/docs/ghl/conversations/get-message-recording
+   *   GET /conversations/messages/{messageId}/locations/{locationId}/recording?index=0
+   *   Scope: conversations/message.readonly · Header: Accept: audio/x-wav
+   *
+   * IMPORTANT (per GHL docs):
+   *   - The response is the WAV BYTE STREAM, NOT JSON and NOT a signed URL. OAuth never returns a
+   *     recording URL — there is nothing linkable. To deliver audio we must proxy the bytes.
+   *   - "No recording" is HTTP 422 ("Message does not have recording"), NOT 404.
+   *   - Only TYPE_CALL (type 1) and TYPE_CAMPAIGN_VOICEMAIL (type 10) may have a recording; even
+   *     then it's 200-vs-422 — no message field guarantees one exists.
+   *
+   * @param {object} opts
+   *   - opts.existenceOnly: true → HEAD-like check; aborts the stream early, returns {exists}.
+   *     false (default) → returns { exists, stream, contentType, contentLength, filename } for proxying.
+   */
+  async getMessageRecording(locationId, messageId, opts = {}) {
+    const { index = 0, existenceOnly = false, lite = false } = opts;
+    const url = `${this.baseURL}/conversations/messages/${messageId}/locations/${locationId}/recording`;
+    try {
+      const accessToken = await this.getValidToken(locationId, { lite });
+      const response = await axios({
+        method: 'GET',
+        url,
+        params: { index },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Version: '2021-07-28',
+          Accept: 'audio/x-wav'
+        },
+        responseType: 'stream',
+        // 422 = no recording for this message (expected) — handle, don't throw.
+        validateStatus: (s) => (s >= 200 && s < 300) || s === 422
+      });
+      if (response.status === 422) {
+        if (response.data?.destroy) response.data.destroy();
+        return { exists: false };
+      }
+      const cd = response.headers['content-disposition'] || '';
+      const m = /filename="?([^"]+)"?/i.exec(cd);
+      const filename = m ? m[1] : `recording_${messageId}.wav`;
+      const contentType = response.headers['content-type'] || 'audio/x-wav';
+      const contentLength = response.headers['content-length'] || null;
+      if (existenceOnly) {
+        // We only needed to confirm 200 vs 422 — don't buffer the audio.
+        if (response.data?.destroy) response.data.destroy();
+        return { exists: true, contentType, contentLength, filename };
+      }
+      return { exists: true, stream: response.data, contentType, contentLength, filename };
+    } catch (error) {
+      logger.warn('getMessageRecording failed (non-blocking):', { messageId, status: error.response?.status, error: error.message });
+      return { exists: false };
+    }
+  }
+
+  /**
    * Export messages with advanced filters
    * Includes conversationId in response and supports cursor pagination
    */

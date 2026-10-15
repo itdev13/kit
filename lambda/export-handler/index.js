@@ -804,6 +804,37 @@ function callTranscriptionsToCSV(records, includeHeader = true) {
 }
 
 /**
+ * Call Recordings — one row per recorded call with the recording download URL.
+ */
+function callRecordingsToCSV(records, includeHeader = true, jobId = '', downloadToken = '') {
+  const header = includeHeader
+    ? 'Date,ConversationID,ContactID,MessageID,MessageType,UserID,Direction,Status,CallDuration,CallStatus,DownloadLink\n'
+    : '';
+  // GHL has no shareable recording URL — the audio is streamed by our proxy route, authorized by the
+  // job's downloadToken. Each row links there; clicking it downloads the .wav.
+  const rows = records.map(r => {
+    const link = (jobId && downloadToken && r.messageId)
+      ? `${PUBLIC_API_URL}/api/billing/recording/${jobId}/${r.messageId}?token=${downloadToken}`
+      : '';
+    return [
+      escapeCsv(formatDate(r.dateAdded)),
+      escapeCsv(r.conversationId || ''),
+      escapeCsv(r.contactId || ''),
+      escapeCsv(r.messageId || ''),
+      escapeCsv(r.messageType || ''),
+      escapeCsv(r.userId || ''),
+      escapeCsv(r.direction || ''),
+      escapeCsv(r.status || ''),
+      escapeCsv(r.callDuration || ''),
+      escapeCsv(r.callStatus || ''),
+      escapeCsv(link)
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
  * Contact Bundle — one CSV row per message, already sorted by dateAdded ASC in the walker.
  * Categories: sms / email / call (used for billing; surfaced as the `Category` column for QA).
  *
@@ -1415,6 +1446,7 @@ async function sendEmail(email, downloadUrl, jobDetails) {
         jobDetails.exportType === 'groupMessages' ? 'Group Messages' :
         jobDetails.exportType === 'internalMessages' ? 'Internal Messages' :
         jobDetails.exportType === 'callTranscriptions' ? 'Call Transcriptions' :
+        jobDetails.exportType === 'callRecordings' ? 'Call Recordings' :
         jobDetails.exportType === 'opportunityStageHistory' ? 'Opportunity Stage History' :
         jobDetails.exportType === 'contacts' ? 'Contacts' : 'Messages'
       } Export is Ready`,
@@ -2187,7 +2219,7 @@ exports.handler = async (event, context) => {
       cursor = contactsCursor ? JSON.stringify(contactsCursor) : null;
       hasMoreData = !!cursor;
 
-    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle') {
+    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle') {
       // === SPECIAL MESSAGES / CALL TRANSCRIPTIONS: Read pre-fetched records from chunked specialexports ===
       // Chunk 0 is the "root" doc (has exportJobId). Remaining chunks share groupId = root._id.
       // Each chunk holds up to CHUNK_SIZE (5000) messages, matching BATCH_SIZE so one invocation = one chunk.
@@ -2214,7 +2246,9 @@ exports.handler = async (event, context) => {
 
       // For callTranscriptions, the records live under `callTranscriptionsMessages`;
       // specialTabMessages still uses `messages`.
-      const recordsField = job.exportType === 'callTranscriptions' ? 'callTranscriptionsMessages' : 'messages';
+      const recordsField = job.exportType === 'callTranscriptions' ? 'callTranscriptionsMessages'
+        : job.exportType === 'callRecordings' ? 'callRecordingsMessages'
+        : 'messages';
       const rootRecords = rootExport[recordsField] || [];
       const totalMessages = rootExport.totalMessages || rootRecords.length;
       const groupId = rootExport._id; // chunk 0 _id is the groupId for all other chunks
@@ -2429,6 +2463,8 @@ exports.handler = async (event, context) => {
         content = opportunityStageHistoryToCSV(records, isFirstContent, oshContactCfNames, oshOpportunityCfNames);
       } else if (job.exportType === 'callTranscriptions') {
         content = callTranscriptionsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'callRecordings') {
+        content = callRecordingsToCSV(records, isFirstContent, String(exportJobId), job.downloadToken || '');
       } else if (job.exportType === 'contactBundle') {
         content = contactBundleToCSV(records, isFirstContent);
       } else if (job.exportType === 'contacts') {
@@ -2640,7 +2676,9 @@ exports.handler = async (event, context) => {
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
       // Secret token authorizing the public email download link (email links carry no session).
-      const downloadToken = crypto.randomBytes(24).toString('hex');
+      // Preserve a pre-set token when present (Call Recordings sets it at job creation so the CSV's
+      // per-row proxy links are already signed with it — regenerating here would break those links).
+      const downloadToken = job.downloadToken || crypto.randomBytes(24).toString('hex');
 
       // Update job as completed
       await updateJob(db, exportJobId, {
@@ -2657,7 +2695,7 @@ exports.handler = async (event, context) => {
       // Clean up all chunk docs for this specialTabMessages / callTranscriptions export.
       // Root doc is matched by exportJobId; sibling chunks share groupId = root._id.
       // TTL index is the safety net if this delete fails.
-      if (job.exportType === 'specialTabMessages' || job.exportType === 'callTranscriptions') {
+      if (job.exportType === 'specialTabMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings') {
         try {
           const rootDoc = await db.collection('specialexports').findOne(
             { exportJobId: new ObjectId(exportJobId) },

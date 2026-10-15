@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
@@ -118,7 +119,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -139,7 +140,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
 
     // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags)
     if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags'].includes(exportType)) {
-      const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
+      const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions', 'callRecordings'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
       if (!dateValidation.valid) {
         return res.status(400).json({
           success: false,
@@ -2125,6 +2126,204 @@ router.post('/estimate', authenticateSession, async (req, res) => {
           specialExportId: specialExport._id
         }
       });
+    } else if (exportType === 'callRecordings') {
+      // Call Recordings — mirrors callTranscriptions exactly, but instead of pulling the plain-text
+      // transcript per call, it resolves the RECORDING download URL per call (GHL get-message-recording).
+      // Records are persisted into specialexports.callRecordingsMessages (chunked); Lambda reads + CSVs.
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+      const withRetry = async (fn, maxRetries = 6) => {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            return await fn();
+          } catch (err) {
+            const is429 = err.response?.status === 429;
+            const is5xx = err.response?.status >= 500 && err.response?.status < 600;
+            if ((is429 || is5xx) && attempt < maxRetries) {
+              const base = Math.min(30000, Math.pow(2, attempt) * 2000);
+              const delay = base + Math.floor(Math.random() * 500);
+              logger.warn('Transient error, retrying', { status: err.response?.status, attempt: attempt + 1, delay });
+              await sleep(delay);
+            } else {
+              throw err;
+            }
+          }
+        }
+      };
+
+      // contactIds REQUIRED (same guard as callTranscriptions).
+      const contactIdsFilter = Array.isArray(filters?.contactIds) ? filters.contactIds.filter(Boolean) : [];
+      if (contactIdsFilter.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Call Recordings export requires at least one contactId in filters.contactIds.'
+        });
+      }
+
+      const allConversationIds = [];
+      const CONTACT_PARALLEL = 3;
+      for (let i = 0; i < contactIdsFilter.length; i += CONTACT_PARALLEL) {
+        const batch = contactIdsFilter.slice(i, i + CONTACT_PARALLEL);
+        const results = await Promise.allSettled(
+          batch.map(cid => withRetry(() => ghlService.searchConversations(locationId, { contactId: cid, limit: 100 })))
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            const convos = r.value.conversations || [];
+            allConversationIds.push(...convos.map(c => c.id));
+          }
+        }
+      }
+      logger.info('Call Recordings: per-contact conversations fetched', {
+        contactCount: contactIdsFilter.length,
+        conversationCount: allConversationIds.length
+      });
+
+      // Step A — collect messages that MAY have a recording. Per GHL docs, only TYPE_CALL (1) and
+      // TYPE_CAMPAIGN_VOICEMAIL (10) can have recordings. We ask the API for both types.
+      const PARALLEL = 3;
+      const PAGE_SIZE = 300;
+      const mayHaveRecording = (m) =>
+        m?.type === 1 || m?.type === 10 ||
+        m?.messageType === 'TYPE_CALL' || m?.messageType === 'TYPE_CAMPAIGN_VOICEMAIL' ||
+        m?.type === 'TYPE_CALL' || m?.type === 'TYPE_CAMPAIGN_VOICEMAIL';
+      const callMsgs = [];
+      let conversationsFailed = 0;
+      for (let i = 0; i < allConversationIds.length; i += PARALLEL) {
+        const batch = allConversationIds.slice(i, i + PARALLEL);
+        const results = await Promise.allSettled(
+          batch.map(async (cId) => {
+            const out = [];
+            let cursor = undefined;
+            while (true) {
+              const msgOptions = { limit: PAGE_SIZE, type: 'TYPE_CALL,TYPE_CAMPAIGN_VOICEMAIL' };
+              if (cursor) msgOptions.lastMessageId = cursor;
+              const result = await withRetry(() => ghlService.getMessages(locationId, cId, msgOptions));
+              const wrapper = result.messages || {};
+              const pageMsgs = wrapper.messages || [];
+              for (const m of pageMsgs) {
+                if (mayHaveRecording(m)) out.push({ ...m, conversationId: cId });
+              }
+              if (pageMsgs.length < PAGE_SIZE || !wrapper.nextPage) break;
+              cursor = wrapper.lastMessageId;
+            }
+            return out;
+          })
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            callMsgs.push(...r.value);
+          } else {
+            conversationsFailed++;
+            logger.warn('Conversation message fetch failed (after retries)', { error: r.reason?.message });
+          }
+        }
+      }
+      logger.info('Call Recordings: call/voicemail messages found', { count: callMsgs.length, conversationsFailed });
+
+      // Step B — confirm a recording actually exists per message (200 vs 422), keeping only those
+      // that do. There is NO URL from GHL — we store messageId + locationId and stream the audio at
+      // download time via our proxy route (/billing/recording/:jobId/:messageId).
+      const recordingRecords = [];
+      let noRecordingCount = 0;
+      for (let i = 0; i < callMsgs.length; i += PARALLEL) {
+        const batch = callMsgs.slice(i, i + PARALLEL);
+        const results = await Promise.allSettled(
+          batch.map(async (m) => {
+            const rec = await withRetry(() => ghlService.getMessageRecording(locationId, m.id, { existenceOnly: true }));
+            if (!rec?.exists) return { status: 'none' };
+            return {
+              status: 'ok',
+              record: {
+                messageId: m.id,
+                locationId,
+                conversationId: m.conversationId,
+                contactId: m.contactId || '',
+                userId: m.userId || '',
+                messageType: m.type || m.messageType || '',
+                direction: m.direction || '',
+                status: m.status || '',
+                dateAdded: m.dateAdded || null,
+                callDuration: m.meta?.callDuration || '',
+                callStatus: m.meta?.callStatus || '',
+                contentType: rec.contentType || 'audio/x-wav'
+              }
+            };
+          })
+        );
+        for (const r of results) {
+          if (r.status !== 'fulfilled') continue;
+          if (r.value.status === 'ok') recordingRecords.push(r.value.record);
+          else noRecordingCount++;
+        }
+      }
+
+      logger.info('Call Recordings: recordings resolved', {
+        eligible: callMsgs.length,
+        storedRecordings: recordingRecords.length,
+        noRecordingCount
+      });
+
+      if (recordingRecords.length === 0) {
+        return res.status(400).json({ success: false, error: 'No call recordings found for the selected contacts' });
+      }
+
+      // Chunked SpecialExport — callRecordingsMessages field (distinct from transcripts/messages).
+      const CHUNK_SIZE = 5000;
+      const totalChunks = Math.max(1, Math.ceil(recordingRecords.length / CHUNK_SIZE));
+      const specialExport = await SpecialExport.create({
+        locationId,
+        filters: { type: 'call_recordings' },
+        callRecordingsMessages: recordingRecords.slice(0, CHUNK_SIZE),
+        totalMessages: recordingRecords.length,
+        totalConversations: allConversationIds.length,
+        chunkIndex: 0,
+        totalChunks,
+        status: 'ready'
+      });
+      if (totalChunks > 1) {
+        const chunkDocs = [];
+        for (let ci = 1; ci < totalChunks; ci++) {
+          chunkDocs.push({
+            locationId,
+            filters: { type: 'call_recordings' },
+            callRecordingsMessages: recordingRecords.slice(ci * CHUNK_SIZE, (ci + 1) * CHUNK_SIZE),
+            totalMessages: recordingRecords.length,
+            totalConversations: allConversationIds.length,
+            groupId: specialExport._id,
+            chunkIndex: ci,
+            totalChunks,
+            status: 'ready',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+        await SpecialExport.insertMany(chunkDocs);
+      }
+
+      const total = recordingRecords.length;
+      const unitPrice = 0.05;
+      const finalAmount = total * unitPrice;
+      return res.json({
+        success: true,
+        data: {
+          estimate: {
+            itemCounts: {
+              callRecordings: total,
+              total,
+              conversationsTraversed: allConversationIds.length,
+              callMessagesScanned: callMsgs.length
+            },
+            baseAmount: finalAmount,
+            discountPercent: 0,
+            discountAmount: 0,
+            finalAmount
+          },
+          filters,
+          exportType,
+          specialExportId: specialExport._id
+        }
+      });
     }
 
     if (exportType === 'contactBundle') {
@@ -2485,7 +2684,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -2523,7 +2722,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
 
     // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags)
     if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags'].includes(exportType)) {
-      const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
+      const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions', 'callRecordings'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
       if (!dateValidation.valid) {
         return res.status(400).json({
           success: false,
@@ -2672,7 +2871,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         // Use estimatedTotal from frontend (do not re-walk GHL).
         totalItems = filters?.estimatedTotal || 0;
 
-      } else if (exportType === 'callTranscriptions') {
+      } else if (exportType === 'callTranscriptions' || exportType === 'callRecordings') {
         // Use estimatedTotal from frontend (already counted during estimate — heavy task, do not re-walk)
         totalItems = filters?.estimatedTotal || 0;
 
@@ -2799,6 +2998,12 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       const finalAmount = totalItems * unitPrice;
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Call transcriptions export' }];
+    } else if (exportType === 'callRecordings') {
+      // Call Recordings: standalone billing (flat $0.05/recording, single meter charge, no discount).
+      const unitPrice = 0.05;
+      const finalAmount = totalItems * unitPrice;
+      estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
+      meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Call recordings export' }];
     } else if (exportType === 'opportunityStageHistory') {
       // Opportunity Stage History: flat $0.10 per (opportunity + message), single meter charge,
       // no discount tier. totalItems = oppCount + msgCount (set above from the SpecialExport doc).
@@ -3025,6 +3230,12 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       specialTabType: exportType
     };
 
+    // Call Recordings: the CSV embeds per-row proxy links authorized by downloadToken, and the Lambda
+    // writes the CSV before it would otherwise mint that token — so pre-generate it here.
+    const preGeneratedDownloadToken = exportType === 'callRecordings'
+      ? crypto.randomBytes(24).toString('hex')
+      : undefined;
+
     const exportJob = await ExportJob.create({
       locationId,
       companyId,
@@ -3035,7 +3246,8 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       totalItems,
       status: 'pending',
       notificationEmail: notificationEmail || null,
-      userId
+      userId,
+      ...(preGeneratedDownloadToken ? { downloadToken: preGeneratedDownloadToken } : {})
     });
 
     console.log("jobfilters: ", jobFilters)
@@ -3045,7 +3257,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
 
     // Step 9a: Link the SpecialExport to this job.
     // For specialTabMessages and opportunityStageHistory it was created during /estimate; for callTranscriptions it was created in Step 7a (post-charge).
-    if (['specialTabMessages', 'callTranscriptions', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'].includes(exportType) && filters?.specialExportId) {
+    if (['specialTabMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'].includes(exportType) && filters?.specialExportId) {
       try {
         await SpecialExport.findByIdAndUpdate(filters.specialExportId, {
           exportJobId: exportJob._id
@@ -3294,6 +3506,56 @@ router.get('/download-email/:jobId', async (req, res) => {
 });
 
 /**
+ * @route GET /api/billing/recording/:jobId/:messageId?token=…
+ * @desc PUBLIC proxy for a single call recording (Call Recordings export). GHL returns the WAV as a
+ *   byte stream with no shareable URL, so the export CSV can't contain a clickable link. Instead each
+ *   row links here; we authorize via the per-job downloadToken, fetch the audio from GHL with the
+ *   location's stored token, and stream it straight back to the browser as a .wav download.
+ *   Enforces the same 7-day window as the file download.
+ */
+router.get('/recording/:jobId/:messageId', async (req, res) => {
+  try {
+    const { jobId, messageId } = req.params;
+    const token = req.query.token;
+
+    if (!jobId || !messageId || !token) {
+      return res.status(400).json({ success: false, error: 'Missing job, message, or token.' });
+    }
+
+    const job = await ExportJob.findById(jobId).lean().catch(() => null);
+    if (!job || job.downloadToken !== token) {
+      return res.status(403).json({ success: false, error: 'Invalid or expired download link.' });
+    }
+    if (job.exportType !== 'callRecordings') {
+      return res.status(400).json({ success: false, error: 'This link is not a recording link.' });
+    }
+    // Same 7-day gate as the file download.
+    if (job.downloadUrlExpiresAt && Date.now() >= new Date(job.downloadUrlExpiresAt).getTime()) {
+      return res.status(410).json({ success: false, error: 'This recording link has expired (7-day limit). Please run the export again.' });
+    }
+
+    // Stream the audio from GHL using the job's location token (lite scope follows the job).
+    const rec = await ghlService.getMessageRecording(job.locationId, messageId, { lite: !!job.lite });
+    if (!rec?.exists || !rec.stream) {
+      return res.status(404).json({ success: false, error: 'Recording not available.' });
+    }
+
+    res.setHeader('Content-Type', rec.contentType || 'audio/x-wav');
+    res.setHeader('Content-Disposition', `attachment; filename="${rec.filename || `recording_${messageId}.wav`}"`);
+    if (rec.contentLength) res.setHeader('Content-Length', rec.contentLength);
+    rec.stream.on('error', (err) => {
+      logger.warn('Recording proxy stream error', { jobId, messageId, error: err.message });
+      if (!res.headersSent) res.status(502).end();
+      else res.destroy();
+    });
+    rec.stream.pipe(res);
+  } catch (error) {
+    logError('Recording proxy error', error, { jobId: req.params?.jobId, messageId: req.params?.messageId });
+    if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to fetch recording.' });
+  }
+});
+
+/**
  * @route GET /api/billing/export-history
  * @desc Get recent export jobs for location with pagination
  */
@@ -3366,9 +3628,10 @@ router.get('/export-history', authenticateSession, async (req, res) => {
 router.get('/pricing', async (req, res) => {
   const locationId = req.query?.locationId;
   // Custom Charge and Call Transcriptions stay gated; Complete Messages and Import Notes are now live for all locations.
-  const [customChargeLocationIds, callTranscriptionsLocationIds] = await Promise.all([
+  const [customChargeLocationIds, callTranscriptionsLocationIds, callRecordingsLocationIds] = await Promise.all([
     AppConfig.getValues('customChargeLocationIds'),
-    AppConfig.getValues('callTranscriptionsLocationIds')
+    AppConfig.getValues('callTranscriptionsLocationIds'),
+    AppConfig.getValues('callRecordingsLocationIds')
   ]);
   // "*" in values = show to all locations (global kill-switch)
   const customChargeEnabled = locationId
@@ -3376,6 +3639,9 @@ router.get('/pricing', async (req, res) => {
     : false;
   const callTranscriptionsEnabled = locationId
     ? (callTranscriptionsLocationIds.includes('*') || callTranscriptionsLocationIds.includes(locationId))
+    : false;
+  const callRecordingsEnabled = locationId
+    ? (callRecordingsLocationIds.includes('*') || callRecordingsLocationIds.includes(locationId))
     : false;
 
   // Per-tab kill-switch. One AppConfig doc per tab: key `disabledTab:<tab>`, whose `values`
@@ -3385,7 +3651,7 @@ router.get('/pricing', async (req, res) => {
   // Checked tabs = every export/import tab id the UI can render, plus 'import'/'export'.
   const CONFIGURABLE_TABS = [
     'import', 'export',
-    'messages', 'specialTabMessages', 'contactBundle', 'messagesByTag', 'callTranscriptions',
+    'messages', 'specialTabMessages', 'contactBundle', 'messagesByTag', 'callTranscriptions', 'callRecordings',
     'contacts', 'opportunities', 'opportunityStageHistory', 'formSubmissions',
     'notes', 'tasks', 'templates', 'links', 'callLogs', 'customFields', 'customValues', 'tags',
     'importContacts', 'importNotes', 'importCustomFields', 'importCustomValues'
@@ -3419,6 +3685,7 @@ router.get('/pricing', async (req, res) => {
       importNotesEnabled: true,
       customChargeEnabled,
       callTranscriptionsEnabled,
+      callRecordingsEnabled,
       // Tab ids (and/or 'import') to hide for this location. UI filters its tab list by this.
       disabledTabs
     }

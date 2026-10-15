@@ -44,6 +44,11 @@ const specialExportSchema = new mongoose.Schema({
     type: [mongoose.Schema.Types.Mixed],
     default: []
   },
+  // Dedicated field for the callRecordings export type (recording URL per call).
+  callRecordingsMessages: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: []
+  },
   totalMessages: {
     type: Number,
     default: 0

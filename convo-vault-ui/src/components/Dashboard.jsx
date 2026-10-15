@@ -14,6 +14,7 @@ import CallLogsTab from './tabs/CallLogsTab';
 import TemplatesTab from './tabs/TemplatesTab';
 import SpecialMessagesTab from './tabs/SpecialMessagesTab';
 import CallTranscriptionsTab from './tabs/CallTranscriptionsTab';
+import CallRecordingsTab from './tabs/CallRecordingsTab';
 import ContactBundleTab from './tabs/ContactBundleTab';
 import MessagesByTagTab from './tabs/MessagesByTagTab';
 import GroupMessagesTab from './tabs/GroupMessagesTab';
@@ -57,6 +58,7 @@ export default function Dashboard() {
   // Charge and Call Transcriptions stay gated; Complete Messages and Import Notes are now live for everyone.
   const [customChargeEnabled, setCustomChargeEnabled] = useState(false);
   const [callTranscriptionsEnabled, setCallTranscriptionsEnabled] = useState(false);
+  const [callRecordingsEnabled, setCallRecordingsEnabled] = useState(false);
   // Per-location tab kill-switch (from AppConfig `disabledTabs:<locationId>`). Holds tab ids to
   // hide, and/or the value 'import' to hide the whole Import mode. Empty = nothing disabled.
   const [disabledTabs, setDisabledTabs] = useState([]);
@@ -71,6 +73,7 @@ export default function Dashboard() {
     billingAPI.getPricing(location.id).then(res => {
       setCustomChargeEnabled(!!res?.data?.customChargeEnabled);
       setCallTranscriptionsEnabled(!!res?.data?.callTranscriptionsEnabled);
+      setCallRecordingsEnabled(!!res?.data?.callRecordingsEnabled);
       setDisabledTabs(Array.isArray(res?.data?.disabledTabs) ? res.data.disabledTabs : []);
     }).catch(() => {});
   }, [location?.id]);
@@ -86,6 +89,7 @@ export default function Dashboard() {
         { id: 'messagesByTag', label: 'Messages by Tag', icon: '🏷️' },
         { id: 'groupMessages', label: 'Group Messages', icon: '👥' },
         ...(callTranscriptionsEnabled ? [{ id: 'callTranscriptions', label: 'Call Transcriptions', icon: '🎙️' }] : []),
+        ...(callRecordingsEnabled ? [{ id: 'callRecordings', label: 'Call Recordings', icon: '🔊' }] : []),
       ]
     },
     {
@@ -561,6 +565,7 @@ export default function Dashboard() {
                 {activeTab === 'tags' && <TagsTab />}
                 {activeTab === 'opportunityStageHistory' && features?.opportunityStageHistory && <OpportunityStageHistoryTab />}
                 {activeTab === 'callTranscriptions' && callTranscriptionsEnabled && <CallTranscriptionsTab />}
+                {activeTab === 'callRecordings' && callRecordingsEnabled && <CallRecordingsTab />}
                 {activeTab === 'contactBundle' && <ContactBundleTab />}
                 {activeTab === 'messagesByTag' && <MessagesByTagTab />}
                 {activeTab === 'groupMessages' && <GroupMessagesTab />}
