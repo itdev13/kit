@@ -89,7 +89,7 @@ export default function Dashboard() {
         { id: 'messagesByTag', label: 'Messages by Tag', icon: '🏷️' },
         { id: 'groupMessages', label: 'Group Messages', icon: '👥' },
         ...(callTranscriptionsEnabled ? [{ id: 'callTranscriptions', label: 'Call Transcriptions', icon: '🎙️' }] : []),
-        ...(callRecordingsEnabled ? [{ id: 'callRecordings', label: 'Call Recordings', icon: '🔊' }] : []),
+        { id: 'callRecordings', label: 'Call Recordings', icon: '🔊' },
       ]
     },
     {
@@ -565,7 +565,7 @@ export default function Dashboard() {
                 {activeTab === 'tags' && <TagsTab />}
                 {activeTab === 'opportunityStageHistory' && features?.opportunityStageHistory && <OpportunityStageHistoryTab />}
                 {activeTab === 'callTranscriptions' && callTranscriptionsEnabled && <CallTranscriptionsTab />}
-                {activeTab === 'callRecordings' && callRecordingsEnabled && <CallRecordingsTab />}
+                {activeTab === 'callRecordings' && <CallRecordingsTab enabled={callRecordingsEnabled} />}
                 {activeTab === 'contactBundle' && <ContactBundleTab />}
                 {activeTab === 'messagesByTag' && <MessagesByTagTab />}
                 {activeTab === 'groupMessages' && <GroupMessagesTab />}

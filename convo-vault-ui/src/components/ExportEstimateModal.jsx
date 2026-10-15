@@ -734,25 +734,16 @@ export default function ExportEstimateModal({
               {exportType === 'callRecordings' && (
                 <>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Conversations walked</span>
-                    <span className="font-medium">{formatNumber(estimate.itemCounts?.conversationsTraversed || 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Call messages scanned</span>
-                    <span className="font-medium">{formatNumber(estimate.itemCounts?.callMessagesScanned || 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Recordings found</span>
+                    <span className="text-gray-700">Call recordings found</span>
                     <span className="font-medium">{formatNumber(estimate.itemCounts?.total)}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Price per Recording</span>
-                    <span className="font-medium text-gray-800">$0.50</span>
+                    <span className="text-gray-700">Price per Message</span>
+                    <span className="font-medium text-gray-800">$0.05</span>
                   </div>
                   <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
-                    Heavy task — we walk the selected contacts&apos; conversations, scan every call, and
-                    confirm a recording exists for each one. The export is a CSV with a one-click download
-                    link per recording. No volume discounts apply.
+                    We pull every call in this sub-account and collect its recording. The export is a
+                    CSV with one recording download link per row. No volume discounts apply.
                   </div>
                 </>
               )}

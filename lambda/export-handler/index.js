@@ -806,30 +806,21 @@ function callTranscriptionsToCSV(records, includeHeader = true) {
 /**
  * Call Recordings — one row per recorded call with the recording download URL.
  */
-function callRecordingsToCSV(records, includeHeader = true, jobId = '', downloadToken = '') {
+function callRecordingsToCSV(records, includeHeader = true) {
   const header = includeHeader
-    ? 'Date,ConversationID,ContactID,MessageID,MessageType,UserID,Direction,Status,CallDuration,CallStatus,DownloadLink\n'
+    ? 'Date,ConversationID,ContactID,MessageID,MessageType,UserID,Direction,Status,AttachmentURL\n'
     : '';
-  // GHL has no shareable recording URL — the audio is streamed by our proxy route, authorized by the
-  // job's downloadToken. Each row links there; clicking it downloads the .wav.
-  const rows = records.map(r => {
-    const link = (jobId && downloadToken && r.messageId)
-      ? `${PUBLIC_API_URL}/api/billing/recording/${jobId}/${r.messageId}?token=${downloadToken}`
-      : '';
-    return [
-      escapeCsv(formatDate(r.dateAdded)),
-      escapeCsv(r.conversationId || ''),
-      escapeCsv(r.contactId || ''),
-      escapeCsv(r.messageId || ''),
-      escapeCsv(r.messageType || ''),
-      escapeCsv(r.userId || ''),
-      escapeCsv(r.direction || ''),
-      escapeCsv(r.status || ''),
-      escapeCsv(r.callDuration || ''),
-      escapeCsv(r.callStatus || ''),
-      escapeCsv(link)
-    ].join(',');
-  }).join('\n');
+  const rows = records.map(r => [
+    escapeCsv(formatDate(r.dateAdded)),
+    escapeCsv(r.conversationId || ''),
+    escapeCsv(r.contactId || ''),
+    escapeCsv(r.messageId || ''),
+    escapeCsv(r.messageType || ''),
+    escapeCsv(r.userId || ''),
+    escapeCsv(r.direction || ''),
+    escapeCsv(r.status || ''),
+    escapeCsv(r.attachmentUrl || '')
+  ].join(',')).join('\n');
 
   return header + rows + (rows.length > 0 ? '\n' : '');
 }
@@ -2464,7 +2455,7 @@ exports.handler = async (event, context) => {
       } else if (job.exportType === 'callTranscriptions') {
         content = callTranscriptionsToCSV(records, isFirstContent);
       } else if (job.exportType === 'callRecordings') {
-        content = callRecordingsToCSV(records, isFirstContent, String(exportJobId), job.downloadToken || '');
+        content = callRecordingsToCSV(records, isFirstContent);
       } else if (job.exportType === 'contactBundle') {
         content = contactBundleToCSV(records, isFirstContent);
       } else if (job.exportType === 'contacts') {
