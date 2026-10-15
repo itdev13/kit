@@ -2155,7 +2155,13 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       // for GET /messages over OAuth, but the export endpoint KEEPS them (recording URLs). channel=Call
       // also covers every call type (TYPE_CALL, voicemail, campaign/IVR/custom calls) in one paginated
       // pass — no contacts and no conversation discovery needed. One row per attachment (recording link).
-      const callMessages = await withRetry(() => ghlService.exportAllMessages(locationId, { channel: 'Call' }));
+      logger.info('Call Recordings: starting channel=Call export walk', { locationId });
+      const callMessages = await withRetry(() => ghlService.exportAllMessages(
+        locationId,
+        { channel: 'Call' },
+        (fetched, total) => logger.info('Call Recordings: fetch progress', { fetched, total: total || '?' })
+      ));
+      logger.info('Call Recordings: channel=Call export walk done', { fetched: (callMessages || []).length });
 
       const recordingRecords = [];
       for (const m of (callMessages || [])) {
