@@ -5,7 +5,7 @@ import { Button, message as antMessage } from 'antd';
 import ExportEstimateModal from '../ExportEstimateModal';
 import ExportProgress from '../ExportProgress';
 
-export default function CallRecordingsTab({ enabled = false }) {
+export default function CallRecordingsTab() {
   const { location } = useAuth();
 
   const [exportModalVisible, setExportModalVisible] = useState(false);
@@ -34,54 +34,6 @@ export default function CallRecordingsTab({ enabled = false }) {
     }, 5000);
     return () => clearInterval(pollInterval);
   }, [activeJob?.jobId, activeJob?.status, location?.id]);
-
-  // When the feature isn't enabled for this location (AppConfig callRecordingsLocationIds), the tab
-  // is still visible to everyone — but instead of the export UI we show an explainer + a call CTA.
-  // We enable it per-location during that call. (Hooks above run unconditionally — rules of hooks.)
-  if (!enabled) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Call Recordings</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Export your call recordings as downloadable links.
-          </p>
-        </div>
-
-        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-6 sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-2xl">
-              🔊
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-lg font-bold text-gray-900">Let&apos;s set this up for you</h3>
-              <p className="text-sm text-gray-700 mt-2">
-                We&apos;d be happy to connect over a quick call to understand your requirements and enable
-                this functionality for you.
-              </p>
-              <p className="text-sm text-gray-700 mt-3">
-                HighLevel provides call recordings as <strong>raw audio data</strong> rather than ready-to-use
-                links. We process and convert them into <strong>downloadable links</strong> so you can access your
-                recordings directly from this tab. We&apos;ll walk you through the process and configure everything
-                for you during the call.
-              </p>
-              <p className="text-sm text-gray-700 mt-3">
-                Schedule a call at your convenience using the link below:
-              </p>
-              <a
-                href="https://calendar.app.google/CuPLe1nM47Tgn1XW8"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 mt-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors shadow-sm"
-              >
-                📅 Schedule a Call
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const handleGetEstimate = async () => {
     setExportModalVisible(true);

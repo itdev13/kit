@@ -565,7 +565,7 @@ export default function Dashboard() {
                 {activeTab === 'tags' && <TagsTab />}
                 {activeTab === 'opportunityStageHistory' && features?.opportunityStageHistory && <OpportunityStageHistoryTab />}
                 {activeTab === 'callTranscriptions' && callTranscriptionsEnabled && <CallTranscriptionsTab />}
-                {activeTab === 'callRecordings' && <CallRecordingsTab enabled={callRecordingsEnabled} />}
+                {activeTab === 'callRecordings' && <CallRecordingsTab />}
                 {activeTab === 'contactBundle' && <ContactBundleTab />}
                 {activeTab === 'messagesByTag' && <MessagesByTagTab />}
                 {activeTab === 'groupMessages' && <GroupMessagesTab />}
