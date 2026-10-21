@@ -927,8 +927,21 @@ export default function ExportEstimateModal({
           </div>
           )}
 
-          {/* Export Format (export only) */}
-          {!importMode && (
+          {/* Export Format (export only). Hidden for contactBundleDoc — that export is always a
+              Google Doc (.docx), so a CSV/JSON choice doesn't apply. */}
+          {!importMode && exportType === 'contactBundleDoc' && (
+          <div className="bg-gray-50 rounded-lg px-4 py-2 border border-gray-200">
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Export Format
+            </label>
+            <p className="text-sm text-gray-700 font-medium">Google Doc (.docx)</p>
+            <p className="text-xs text-gray-500 mt-1">Opens in Google Docs with collapsible sections, or in Microsoft Word.</p>
+          </div>
+          )}
+          {!importMode && exportType !== 'contactBundleDoc' && (
           <div className="bg-gray-50 rounded-lg px-4 py-2 border border-gray-200">
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -890,10 +890,23 @@ async function buildContactBundleDocx(records) {
   }
 
   for (const [contactId, contactRows] of byContact) {
-    // Heading 1 — the contact (collapsible root in Google Docs).
+    // Contact details come from any row (they're stamped on every row of the contact).
+    const meta = contactRows[0] || {};
+    const displayName = meta.contactName || contactId;
+
+    // Heading 1 — the contact (collapsible root in Google Docs). Name when available.
     children.push(new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: `Contact: ${contactId}` })]
+      children: [new TextRun({ text: `Contact: ${displayName}` })]
+    }));
+
+    // Contact detail line under the heading (email / phone / id).
+    const detailParts = [];
+    if (meta.contactEmail) detailParts.push(`Email: ${meta.contactEmail}`);
+    if (meta.contactPhone) detailParts.push(`Phone: ${meta.contactPhone}`);
+    detailParts.push(`ID: ${contactId}`);
+    children.push(new Paragraph({
+      children: [new TextRun({ text: detailParts.join('   •   '), italics: true, color: '666666' })]
     }));
 
     // Group this contact's records by channel/conversation (Heading 2).
@@ -938,6 +951,14 @@ async function buildContactBundleDocx(records) {
         const lines = bodyText.length ? bodyText.split(/\r?\n/) : [''];
         for (const line of lines) {
           children.push(new Paragraph({ children: [new TextRun({ text: line })] }));
+        }
+
+        // Attachments — one link line per attachment URL.
+        const atts = Array.isArray(r.attachments) ? r.attachments.filter(Boolean) : [];
+        for (const url of atts) {
+          children.push(new Paragraph({
+            children: [new TextRun({ text: `📎 ${url}`, color: '1155CC' })]
+          }));
         }
 
         // Spacer paragraph between messages.

@@ -2602,6 +2602,13 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       // run several in parallel without sharing mutable state.
       const walkOneContact = async (contactId) => {
         const rows = [];
+        // 0) Fetch this contact's details (name / email / phone) — only a few contacts are
+        //    selected, so this is cheap. Stamped on every row for the Doc's contact header.
+        let _cMeta = null;
+        try { _cMeta = await withRetry(() => ghlService.getContact(locationId, contactId)); } catch { _cMeta = null; }
+        const _cName = _cMeta?.name || '';
+        const _cEmail = _cMeta?.email || '';
+        const _cPhone = _cMeta?.phone || '';
 
         // 1) List the contact's conversations (1:1 in practice; one call with limit=100 covers it).
         const convoResp = await withRetry(() => ghlService.searchConversations(locationId, {
@@ -2641,6 +2648,10 @@ router.post('/estimate', authenticateSession, async (req, res) => {
               const callEligible = isCallMsg(m) && CALL_STATUSES_OK.has(String(m.status || '').toLowerCase());
               rows.push({
                 contactId,
+                contactName: _cName,
+                contactEmail: _cEmail,
+                contactPhone: _cPhone,
+                attachments: Array.isArray(m.attachments) ? m.attachments.map(a => (typeof a === 'string' ? a : (a?.url || a?.link || ''))).filter(Boolean) : [],
                 conversationId: m.conversationId || '',
                 messageId: m.id,
                 category: isCallMsg(m) ? 'call' : 'sms',
@@ -2692,6 +2703,10 @@ router.post('/estimate', authenticateSession, async (req, res) => {
           for (const m of msgs) {
             rows.push({
               contactId,
+              contactName: _cName,
+              contactEmail: _cEmail,
+              contactPhone: _cPhone,
+              attachments: Array.isArray(m.attachments) ? m.attachments.map(a => (typeof a === 'string' ? a : (a?.url || a?.link || ''))).filter(Boolean) : [],
               conversationId: m.conversationId || '',
               messageId: m.id,
               category: 'email',

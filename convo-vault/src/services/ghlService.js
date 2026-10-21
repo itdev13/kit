@@ -1313,6 +1313,30 @@ class GHLService {
    * Get all notes for a contact
    * GET /contacts/:contactId/notes
    */
+  /**
+   * Fetch a single contact's details (name, email, phone). Returns null on any error so callers
+   * can fail open. GET /contacts/{contactId}.
+   */
+  async getContact(locationId, contactId) {
+    if (!contactId) return null;
+    try {
+      const response = await this.apiRequest('GET', `/contacts/${contactId}`, locationId);
+      const c = response?.contact || response || {};
+      const name = c.contactName
+        || [c.firstName, c.lastName].filter(Boolean).join(' ').trim()
+        || c.name || '';
+      return {
+        id: c.id || contactId,
+        name,
+        email: c.email || '',
+        phone: c.phone || ''
+      };
+    } catch (error) {
+      logger.warn('getContact failed (non-blocking):', { contactId, error: error.message });
+      return null;
+    }
+  }
+
   async getContactNotes(locationId, contactId) {
     try {
       const response = await this.apiRequest(

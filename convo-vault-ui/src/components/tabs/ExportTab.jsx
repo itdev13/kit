@@ -231,10 +231,10 @@ export default function ExportTab() {
                         {/* Header row */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-800 capitalize">
-                            {job.exportType} Export
+                            {job.exportType === 'contactBundleDoc' ? 'Contact Bundle (Google Doc)' : job.exportType} Export
                           </span>
                           <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded uppercase">
-                            {job.format || 'csv'}
+                            {job.exportType === 'contactBundleDoc' ? 'DOCX' : (job.format || 'csv')}
                           </span>
                         </div>
 
