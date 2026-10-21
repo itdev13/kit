@@ -1025,15 +1025,18 @@ function buildContactBundleHtml(records) {
 async function buildContactBundlePdf(records) {
   const html = buildContactBundleHtml(records);
   // Lazy-load the heavy PDF deps only when a PDF export actually runs (they live on a Lambda layer).
-  const chromium = require('@sparticuz/chromium');
-  const puppeteer = require('puppeteer-core');
+  // Both @sparticuz/chromium and puppeteer-core ship as ES modules, so a plain require() fails under
+  // the Node runtime. Use dynamic import() and unwrap the default export for each.
+  const chromium = (await import('@sparticuz/chromium')).default;
+  const puppeteer = (await import('puppeteer-core')).default;
   let browser;
   try {
+    // @sparticuz/chromium v153 no longer exposes `headless`/`defaultViewport` as top-level props
+    // (they are undefined). Pass an explicit headless value and let puppeteer use its default viewport.
     browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless
+      headless: true
     });
     const page = await browser.newPage();
     // Wait for images to load, but cap it — a dead attachment URL must not hang the render.

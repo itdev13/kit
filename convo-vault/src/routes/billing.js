@@ -2301,16 +2301,18 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       };
       const channelLabel = (m) => {
         const t = m.type ?? m.messageType;
-        if (typeof t === 'string') return t.replace(/^TYPE_/, '');
-        // Best-effort numeric → label mapping for the CSV.
-        switch (t) {
-          case 1: return 'CALL';
-          case 2: return 'SMS';
-          case 3: return 'EMAIL';
-          case 20: return 'SMS'; // observed in production logs
-          case 21: return 'EMAIL';
-          default: return String(t || 'UNKNOWN');
-        }
+        if (typeof t === 'string') return t.replace(/^TYPE_/, '').replace(/_/g, ' ');
+        // GHL numeric message-type → readable label (keeps raw numbers like "22" out of the export).
+        const MAP = {
+          1: 'CALL', 2: 'SMS', 3: 'EMAIL', 4: 'SMS', 5: 'WHATSAPP',
+          6: 'GMB', 7: 'FACEBOOK', 8: 'CALL', 9: 'INSTAGRAM', 10: 'VOICEMAIL',
+          13: 'CALL', 14: 'EMAIL', 15: 'WHATSAPP', 16: 'GMB', 17: 'INSTAGRAM',
+          18: 'FACEBOOK', 19: 'FACEBOOK COMMENT', 20: 'SMS', 21: 'EMAIL',
+          22: 'LIVE CHAT', 23: 'LIVE CHAT', 24: 'CALL', 25: 'ACTIVITY',
+          26: 'ACTIVITY', 27: 'ACTIVITY', 28: 'ACTIVITY', 29: 'ACTIVITY',
+          34: 'CALL'
+        };
+        return MAP[t] || 'MESSAGE';
       };
 
       // Per-contact worker — returns the rows it collected. Stays self-contained so we can
@@ -2586,16 +2588,18 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       };
       const channelLabel = (m) => {
         const t = m.type ?? m.messageType;
-        if (typeof t === 'string') return t.replace(/^TYPE_/, '');
-        // Best-effort numeric → label mapping for the CSV.
-        switch (t) {
-          case 1: return 'CALL';
-          case 2: return 'SMS';
-          case 3: return 'EMAIL';
-          case 20: return 'SMS'; // observed in production logs
-          case 21: return 'EMAIL';
-          default: return String(t || 'UNKNOWN');
-        }
+        if (typeof t === 'string') return t.replace(/^TYPE_/, '').replace(/_/g, ' ');
+        // GHL numeric message-type → readable label (keeps raw numbers like "22" out of the export).
+        const MAP = {
+          1: 'CALL', 2: 'SMS', 3: 'EMAIL', 4: 'SMS', 5: 'WHATSAPP',
+          6: 'GMB', 7: 'FACEBOOK', 8: 'CALL', 9: 'INSTAGRAM', 10: 'VOICEMAIL',
+          13: 'CALL', 14: 'EMAIL', 15: 'WHATSAPP', 16: 'GMB', 17: 'INSTAGRAM',
+          18: 'FACEBOOK', 19: 'FACEBOOK COMMENT', 20: 'SMS', 21: 'EMAIL',
+          22: 'LIVE CHAT', 23: 'LIVE CHAT', 24: 'CALL', 25: 'ACTIVITY',
+          26: 'ACTIVITY', 27: 'ACTIVITY', 28: 'ACTIVITY', 29: 'ACTIVITY',
+          34: 'CALL'
+        };
+        return MAP[t] || 'MESSAGE';
       };
 
       // Per-contact worker — returns the rows it collected. Stays self-contained so we can
