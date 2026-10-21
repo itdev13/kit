@@ -53,7 +53,7 @@ export default function ExportProgress({ job, onDownload, onRefresh }) {
             </h4>
             {/* contactBundleDoc always outputs a .docx regardless of job.format (which stays
                 schema-valid csv/json), so show DOCX for it. */}
-            <Tag className="uppercase text-xs">{job.exportType === 'contactBundleDoc' ? 'DOCX' : (job.format || 'csv')}</Tag>
+            <Tag className="uppercase text-xs">{job.exportType === 'contactBundleDoc' ? 'PDF' : (job.format || 'csv')}</Tag>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
             Started {formatDate(job.startedAt || job.createdAt)}

@@ -187,7 +187,7 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
           <h2 className="text-2xl font-bold text-gray-900">Contact Bundle</h2>
           <p className="text-sm text-gray-500 mt-1">
             {isDoc
-              ? 'Export every message, email, and call transcription for selected contacts — one Google Doc (.docx) with collapsible sections.'
+              ? 'Export every message, email, and call transcription for selected contacts — one PDF styled like your GHL conversation view.'
               : 'Export every message, email, and call transcription for selected contacts — one CSV, sorted by time.'}
           </p>
         </div>
@@ -274,8 +274,8 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
             fetch emails via bulk export, and pull a transcript for every eligible call.
             {isDoc ? (
               <>
-                {' '}Output is a <strong>Google Doc (.docx)</strong> with collapsible sections per contact and
-                conversation. Pricing: <strong>$0.05 per record</strong> — no volume discount.
+                {' '}Output is a <strong>PDF</strong> laid out like your GHL conversation view — chat bubbles grouped
+                by contact and conversation. Pricing: <strong>$0.05 per record</strong> — no volume discount.
               </>
             ) : (
               <>

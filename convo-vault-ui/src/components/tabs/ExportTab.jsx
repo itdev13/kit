@@ -234,7 +234,7 @@ export default function ExportTab() {
                             {job.exportType === 'contactBundleDoc' ? 'Contact Bundle (Google Doc)' : job.exportType} Export
                           </span>
                           <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded uppercase">
-                            {job.exportType === 'contactBundleDoc' ? 'DOCX' : (job.format || 'csv')}
+                            {job.exportType === 'contactBundleDoc' ? 'PDF' : (job.format || 'csv')}
                           </span>
                         </div>
 

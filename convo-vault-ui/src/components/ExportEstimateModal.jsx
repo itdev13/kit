@@ -795,8 +795,8 @@ export default function ExportEstimateModal({
                     <span className="font-medium text-gray-800">$0.05</span>
                   </div>
                   <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
-                    Google Doc (.docx) export — every message, email, and call transcript for the
-                    selected contacts, organized into collapsible sections. Flat $0.05 per record,
+                    PDF export — every message, email, and call transcript for the
+                    selected contacts, laid out like the GHL conversation view. Flat $0.05 per record,
                     no volume discounts.
                   </div>
                 </>
@@ -937,8 +937,8 @@ export default function ExportEstimateModal({
               </svg>
               Export Format
             </label>
-            <p className="text-sm text-gray-700 font-medium">Google Doc (.docx)</p>
-            <p className="text-xs text-gray-500 mt-1">Opens in Google Docs with collapsible sections, or in Microsoft Word.</p>
+            <p className="text-sm text-gray-700 font-medium">PDF document</p>
+            <p className="text-xs text-gray-500 mt-1">A polished PDF styled like your GHL conversation view. Opens anywhere.</p>
           </div>
           )}
           {!importMode && exportType !== 'contactBundleDoc' && (

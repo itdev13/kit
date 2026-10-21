@@ -4,7 +4,10 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const axios = require('axios');
 const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
-const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
+// Headless-Chrome PDF rendering for the Contact Bundle "Google Doc" export (GHL-style conversation
+// layout → PDF). @sparticuz/chromium ships a Lambda-optimized Chromium; puppeteer-core drives it.
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 
 // Public base URL of the convo-vault backend, used to build the email download link that
 // regenerates a fresh presigned URL on click. Falls back to the prod host.
@@ -878,10 +881,19 @@ function contactBundleToCSV(records, includeHeader = true) {
  * A .docx is a binary zip and cannot be streamed in text chunks — it is built as ONE complete
  * file in memory and returned as a Buffer for a single S3 PutObject.
  */
-async function buildContactBundleDocx(records) {
-  const children = [];
+// HTML-escape helper for the PDF template.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
-  // Group records by contactId (records already arrive sorted by dateAdded ASC).
+// Build a GHL-style conversation HTML document from the bundle records.
+// Build a GHL-inbox-style conversation HTML document from the bundle records, then rendered to PDF.
+// Layout mirrors the HighLevel Conversations view: avatars with initials, date separators, channel
+// badges, inbound (left/grey) vs outbound (right/blue) bubbles, big inline images for attachments,
+// and call rows shown with their transcript.
+function buildContactBundleHtml(records) {
   const byContact = new Map();
   for (const r of records) {
     const cid = r.contactId || 'unknown';
@@ -889,86 +901,154 @@ async function buildContactBundleDocx(records) {
     byContact.get(cid).push(r);
   }
 
-  for (const [contactId, contactRows] of byContact) {
-    // Contact details come from any row (they're stamped on every row of the contact).
-    const meta = contactRows[0] || {};
-    const displayName = meta.contactName || contactId;
+  const initials = (name) => {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  };
+  const isImageUrl = (u) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(u || ''));
+  const dayKey = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toISOString().slice(0, 10); };
+  const dayLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+  const timeLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
 
-    // Heading 1 — the contact (collapsible root in Google Docs). Name when available.
-    children.push(new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: `Contact: ${displayName}` })]
-    }));
+  let sections = '';
+  for (const [contactId, rows] of byContact) {
+    const meta = rows[0] || {};
+    const name = esc(meta.contactName || contactId);
 
-    // Contact detail line under the heading (email / phone / id).
-    const detailParts = [];
-    if (meta.contactEmail) detailParts.push(`Email: ${meta.contactEmail}`);
-    if (meta.contactPhone) detailParts.push(`Phone: ${meta.contactPhone}`);
-    detailParts.push(`ID: ${contactId}`);
-    children.push(new Paragraph({
-      children: [new TextRun({ text: detailParts.join('   •   '), italics: true, color: '666666' })]
-    }));
+    // Header block (mirrors Clifford's sample).
+    let header =
+      '<div class="export-head">' +
+        '<div class="eh-title">Conversation Export for <span class="eh-name">' + name + '</span> ' +
+          '<span class="eh-id">(' + esc(contactId) + ')</span></div>' +
+        (meta.contactEmail ? '<div class="eh-sub">Email: ' + esc(meta.contactEmail) + '</div>' : '') +
+        (meta.contactPhone ? '<div class="eh-sub">Phone: ' + esc(meta.contactPhone) + '</div>' : '') +
+        '<div class="eh-sub">Exported at ' + esc(new Date().toLocaleString('en-US')) + '</div>' +
+      '</div>';
 
-    // Group this contact's records by channel/conversation (Heading 2).
-    const byChannel = new Map();
-    for (const r of contactRows) {
-      const label = (r.channel || r.category || 'OTHER');
-      const key = `${label}::${r.conversationId || ''}`;
-      if (!byChannel.has(key)) byChannel.set(key, { label, conversationId: r.conversationId || '', rows: [] });
-      byChannel.get(key).rows.push(r);
-    }
+    // Inbox header bar (GHL-style).
+    let inbox = '<div class="inbox">' +
+      '<div class="inbox-bar"><div class="ib-av">' + esc(initials(meta.contactName || contactId)) + '</div>' +
+      '<div class="ib-name">' + name + '</div></div>' +
+      '<div class="thread">';
 
-    for (const group of byChannel.values()) {
-      const h2 = group.conversationId
-        ? `${group.label} — conversation ${group.conversationId}`
-        : `${group.label}`;
-      children.push(new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        children: [new TextRun({ text: h2 })]
-      }));
-
-      for (const r of group.rows) {
-        // For call rows, prefer the transcription (what the bundle is paying for), else body.
-        const bodyOrTranscript = r.category === 'call'
-          ? (r.transcription || r.body || '')
-          : (r.body || '');
-
-        // Metadata line (date / direction / from / to [/ subject]).
-        const metaParts = [];
-        if (r.dateAdded) metaParts.push(String(r.dateAdded));
-        if (r.direction) metaParts.push(String(r.direction));
-        if (r.from) metaParts.push(`from: ${r.from}`);
-        if (r.to) metaParts.push(`to: ${r.to}`);
-        if (r.subject) metaParts.push(`subject: ${r.subject}`);
-        if (r.durationSeconds != null && r.durationSeconds !== '') metaParts.push(`duration: ${r.durationSeconds}s`);
-
-        children.push(new Paragraph({
-          children: [new TextRun({ text: metaParts.join('  |  '), bold: true })]
-        }));
-
-        // Message body / transcript. Split on newlines so each line is its own paragraph.
-        const bodyText = String(bodyOrTranscript || '');
-        const lines = bodyText.length ? bodyText.split(/\r?\n/) : [''];
-        for (const line of lines) {
-          children.push(new Paragraph({ children: [new TextRun({ text: line })] }));
-        }
-
-        // Attachments — one link line per attachment URL.
-        const atts = Array.isArray(r.attachments) ? r.attachments.filter(Boolean) : [];
-        for (const url of atts) {
-          children.push(new Paragraph({
-            children: [new TextRun({ text: `📎 ${url}`, color: '1155CC' })]
-          }));
-        }
-
-        // Spacer paragraph between messages.
-        children.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
+    let lastDay = null;
+    for (const r of rows) {
+      // Date separator pill when the day changes.
+      const dk = dayKey(r.dateAdded);
+      if (dk && dk !== lastDay) {
+        lastDay = dk;
+        inbox += '<div class="daysep"><span>\u{1F4C5} ' + esc(dayLabel(r.dateAdded)) + '</span></div>';
       }
+
+      const outbound = String(r.direction || '').toLowerCase() === 'outbound';
+      const side = outbound ? 'out' : 'in';
+      const avInit = outbound ? 'ME' : esc(initials(meta.contactName || contactId));
+      const channel = esc(r.channel || r.category || '');
+      const isCall = r.category === 'call' || /call/i.test(channel);
+
+      // Bubble content.
+      let inner = '';
+      if (channel) inner += '<div class="badge">☎︎ ' + channel + '</div>';
+      if (r.subject) inner += '<div class="subj">' + esc(r.subject) + '</div>';
+
+      if (isCall) {
+        const dur = r.durationSeconds ? ' · ' + esc(r.durationSeconds) + 's' : '';
+        inner += '<div class="callrow">\u{1F4DE} Call' + (r.status ? ' ' + esc(r.status) : ' completed') + dur + '</div>';
+        const t = r.transcription || '';
+        if (t) inner += '<div class="transcript"><div class="tr-h">Transcript</div>' + esc(t).replace(/\r?\n/g, '<br>') + '</div>';
+      } else {
+        const body = esc(r.body || '').replace(/\r?\n/g, '<br>');
+        if (body) inner += '<div class="body">' + body + '</div>';
+      }
+
+      // Attachments — BIG inline images when image URLs; otherwise a link.
+      const atts = Array.isArray(r.attachments) ? r.attachments.filter(Boolean) : [];
+      for (const url of atts) {
+        if (isImageUrl(url)) {
+          inner += '<div class="att-img"><img src="' + esc(url) + '" /></div>';
+        } else {
+          inner += '<div class="att"><a href="' + esc(url) + '">\u{1F4CE} ' + esc(url) + '</a></div>';
+        }
+      }
+      if (!inner) inner = '<div class="body empty">(no content)</div>';
+
+      inbox +=
+        '<div class="row ' + side + '">' +
+          '<div class="av">' + avInit + '</div>' +
+          '<div class="bcol">' +
+            '<div class="bubble">' + inner + '</div>' +
+            '<div class="time">' + esc(timeLabel(r.dateAdded)) + '</div>' +
+          '</div>' +
+        '</div>';
     }
+    inbox += '</div></div>';
+
+    sections += '<section class="contact">' + header + inbox + '</section>';
   }
 
-  const doc = new Document({ sections: [{ children }] });
-  return await Packer.toBuffer(doc);
+  return '<!doctype html><html><head><meta charset="utf-8"><style>' +
+    '*{box-sizing:border-box;} body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2937;margin:0;padding:20px;font-size:13px;background:#fff;}' +
+    '.contact{margin-bottom:34px;page-break-inside:auto;}' +
+    '.export-head{margin-bottom:12px;}' +
+    '.eh-title{font-size:16px;font-weight:600;color:#111827;}' +
+    '.eh-name{color:#2563eb;} .eh-id{color:#6b7280;font-weight:400;font-size:12px;}' +
+    '.eh-sub{color:#6b7280;font-size:12px;margin-top:2px;}' +
+    '.inbox{border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;}' +
+    '.inbox-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #eef0f3;background:#fafbfc;}' +
+    '.ib-av{width:30px;height:30px;border-radius:50%;background:#fcd34d;color:#78350f;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;}' +
+    '.ib-name{font-weight:600;color:#111827;}' +
+    '.thread{padding:16px;background:#fff;}' +
+    '.daysep{text-align:center;margin:16px 0;}' +
+    '.daysep span{background:#f1f5f9;color:#64748b;font-size:11px;padding:4px 12px;border-radius:999px;}' +
+    '.row{display:flex;align-items:flex-end;gap:8px;margin:12px 0;}' +
+    '.row.out{flex-direction:row-reverse;}' +
+    '.av{width:28px;height:28px;border-radius:50%;flex:0 0 28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;background:#60a5fa;}' +
+    '.row.in .av{background:#fcd34d;color:#78350f;}' +
+    '.bcol{max-width:74%;display:flex;flex-direction:column;}' +
+    '.row.out .bcol{align-items:flex-end;}' +
+    '.bubble{padding:9px 12px;border-radius:14px;line-height:1.45;background:#f1f5f9;}' +
+    '.row.in .bubble{border-bottom-left-radius:4px;}' +
+    '.row.out .bubble{background:#dbeafe;border-bottom-right-radius:4px;}' +
+    '.badge{display:inline-block;background:#ecfdf5;color:#047857;font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;margin-bottom:5px;}' +
+    '.subj{font-weight:600;margin-bottom:3px;}' +
+    '.body{white-space:normal;word-break:break-word;}' +
+    '.body.empty{color:#9ca3af;font-style:italic;}' +
+    '.callrow{font-weight:600;color:#065f46;}' +
+    '.transcript{margin-top:6px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:12px;color:#374151;}' +
+    '.transcript .tr-h{font-weight:700;color:#2563eb;margin-bottom:4px;}' +
+    '.att{margin-top:5px;font-size:11px;} .att a{color:#1155cc;text-decoration:none;}' +
+    '.att-img{margin-top:8px;} .att-img img{max-width:100%;width:420px;border-radius:10px;border:1px solid #e5e7eb;}' +
+    '.time{font-size:10px;color:#9ca3af;margin:3px 4px 0;}' +
+    '</style></head><body>' + sections + '</body></html>';
+}
+async function buildContactBundlePdf(records) {
+  const html = buildContactBundleHtml(records);
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless
+    });
+    const page = await browser.newPage();
+    // Wait for images to load, but cap it — a dead attachment URL must not hang the render.
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 45000 });
+    } catch (e) {
+      // Timed out waiting for some resource (e.g. a slow/broken image) — render what we have.
+      log('Contact Bundle PDF: setContent networkidle timed out, rendering anyway', { error: e.message });
+    }
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '16mm', bottom: '16mm', left: '14mm', right: '14mm' }
+    });
+    return pdf;
+  } finally {
+    if (browser) { try { await browser.close(); } catch (e) { /* ignore */ } }
+  }
 }
 
 
@@ -1824,21 +1904,22 @@ exports.handler = async (event, context) => {
 
       log('Contact Bundle (Google Doc): records assembled', { totalChunks, recordCount: allRecords.length });
 
-      // .docx is always .docx regardless of the requested format.
-      const docS3Key = `exports/${job.companyId}/${job.locationId}/${exportJobId}.docx`;
-      const docFilename = `${job.exportType}_export.docx`;
-      const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      // Output is a PDF (rendered from a GHL-style HTML template via headless Chrome) regardless of
+      // the requested format.
+      const docS3Key = `exports/${job.companyId}/${job.locationId}/${exportJobId}.pdf`;
+      const docFilename = `${job.exportType}_export.pdf`;
+      const PDF_CONTENT_TYPE = 'application/pdf';
 
-      const docBuffer = await buildContactBundleDocx(allRecords);
+      const docBuffer = await buildContactBundlePdf(allRecords);
 
       await s3.send(new PutObjectCommand({
         Bucket: S3_BUCKET,
         Key: docS3Key,
         Body: docBuffer,
-        ContentType: DOCX_CONTENT_TYPE,
+        ContentType: PDF_CONTENT_TYPE,
         ContentDisposition: `attachment; filename="${docFilename}"`
       }));
-      log('Contact Bundle (Google Doc): .docx uploaded via putObject', { size: docBuffer.length });
+      log('Contact Bundle (Google Doc): .pdf uploaded via putObject', { size: docBuffer.length });
 
       const downloadUrl = await getSignedUrl(s3, new GetObjectCommand({
         Bucket: S3_BUCKET,
