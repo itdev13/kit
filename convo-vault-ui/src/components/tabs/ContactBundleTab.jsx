@@ -148,6 +148,7 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
         setActiveJob({
           jobId: response.data.jobId,
           status: response.data.status,
+          exportType: activeExportType,
           totalItems: response.data.totalItems,
           progress: { total: response.data.totalItems, processed: 0, percent: 0 }
         });
