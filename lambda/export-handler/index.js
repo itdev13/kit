@@ -4,10 +4,10 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const axios = require('axios');
 const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
-// Headless-Chrome PDF rendering for the Contact Bundle "Google Doc" export (GHL-style conversation
-// layout → PDF). @sparticuz/chromium ships a Lambda-optimized Chromium; puppeteer-core drives it.
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
+// Headless-Chrome PDF rendering for the Contact Bundle "Google Doc" export is loaded LAZILY inside
+// buildContactBundlePdf() — NOT at module top level. @sparticuz/chromium lives on a Lambda layer;
+// requiring it at the top would crash EVERY export (CSV/JSON included) if the layer were ever
+// missing. Lazy-loading keeps all other export types working regardless of the PDF deps.
 
 // Public base URL of the convo-vault backend, used to build the email download link that
 // regenerates a fresh presigned URL on click. Falls back to the prod host.
@@ -1024,6 +1024,9 @@ function buildContactBundleHtml(records) {
 }
 async function buildContactBundlePdf(records) {
   const html = buildContactBundleHtml(records);
+  // Lazy-load the heavy PDF deps only when a PDF export actually runs (they live on a Lambda layer).
+  const chromium = require('@sparticuz/chromium');
+  const puppeteer = require('puppeteer-core');
   let browser;
   try {
     browser = await puppeteer.launch({
