@@ -13,8 +13,14 @@ import ExportProgress from '../ExportProgress';
  *   SMS-like : $0.02   Email : $0.04   Call : $0.05
  * Contact filter is REQUIRED (no whole-sub-account fallback).
  */
-export default function ContactBundleTab() {
+export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
   const { location } = useAuth();
+
+  // Sub-tab inside Contact Bundle: 'default' = existing CSV/JSON bundle, 'doc' = Google Doc (.docx).
+  // The 'doc' sub-tab only renders when the location is enabled via AppConfig.
+  const [subTab, setSubTab] = useState('default');
+  const isDoc = subTab === 'doc' && contactBundleDocEnabled;
+  const activeExportType = isDoc ? 'contactBundleDoc' : 'contactBundle';
 
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [estimating, setEstimating] = useState(false);
@@ -111,7 +117,7 @@ export default function ContactBundleTab() {
     setEstimate(null);
     setEstimateError(null);
     try {
-      const response = await billingAPI.getEstimate(location.id, 'contactBundle', buildExportFilters());
+      const response = await billingAPI.getEstimate(location.id, activeExportType, buildExportFilters());
       if (response.success) {
         setEstimate(response.data.estimate);
         setSpecialExportId(response.data.specialExportId || null);
@@ -134,7 +140,10 @@ export default function ContactBundleTab() {
         estimatedTotal: estimate?.itemCounts?.total || undefined,
         specialExportId: specialExportId || undefined
       };
-      const response = await billingAPI.chargeAndExport(location.id, 'contactBundle', format, filters, notificationEmail);
+      // Google Doc variant always outputs .docx regardless of the modal's CSV/JSON selection.
+      // We still pass a schema-valid format ('csv'); the Lambda forces the .docx extension and
+      // binary output for contactBundleDoc, ignoring job.format.
+      const response = await billingAPI.chargeAndExport(location.id, activeExportType, format, filters, notificationEmail);
       if (response.success) {
         setActiveJob({
           jobId: response.data.jobId,
@@ -169,17 +178,43 @@ export default function ContactBundleTab() {
         estimating={estimating}
         estimate={estimate}
         error={estimateError}
-        exportType="contactBundle"
+        exportType={activeExportType}
       />
 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Contact Bundle</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Export every message, email, and call transcription for selected contacts — one CSV, sorted by time.
+            {isDoc
+              ? 'Export every message, email, and call transcription for selected contacts — one Google Doc (.docx) with collapsible sections.'
+              : 'Export every message, email, and call transcription for selected contacts — one CSV, sorted by time.'}
           </p>
         </div>
       </div>
+
+      {/* Sub-tabs: Default (CSV/JSON) and Google Doc (.docx). The Google Doc tab only renders
+          when the location is enabled via AppConfig (contactBundleDocEnabled). */}
+      {contactBundleDocEnabled && (
+        <div className="flex gap-1 border-b border-gray-200">
+          {[
+            { id: 'default', label: 'Default' },
+            { id: 'doc', label: 'Google Doc' },
+          ].map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { setSubTab(t.id); setEstimate(null); setEstimateError(null); }}
+              className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+                subTab === t.id
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeJob && (
         <ExportProgress
@@ -236,8 +271,17 @@ export default function ContactBundleTab() {
           <p className="text-sm text-amber-800">
             <strong>Heavy task:</strong> we walk each selected contact's conversations to collect every message,
             fetch emails via bulk export, and pull a transcript for every eligible call.
-            Pricing: <strong>$0.02 / message</strong> + <strong>$0.04 / email</strong> + <strong>$0.05 / call transcription</strong>
-            {' '}— no volume discount.
+            {isDoc ? (
+              <>
+                {' '}Output is a <strong>Google Doc (.docx)</strong> with collapsible sections per contact and
+                conversation. Pricing: <strong>$0.05 per record</strong> — no volume discount.
+              </>
+            ) : (
+              <>
+                {' '}Pricing: <strong>$0.02 / message</strong> + <strong>$0.04 / email</strong> + <strong>$0.05 / call transcription</strong>
+                {' '}— no volume discount.
+              </>
+            )}
           </p>
         </div>
       </div>

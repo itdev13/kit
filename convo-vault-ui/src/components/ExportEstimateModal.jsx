@@ -314,7 +314,7 @@ export default function ExportEstimateModal({
                 50k+ → $0.002 (89% off)   100k+ → $0.001 (94% off)   500k+ → $0.0005 (97% off, floor)
               Savings % is vs the $0.018 base. Hidden for export types that don't use the
               message ladder (matches the "View Volume Discount Tiers" section's visibility rule). */}
-          {!['specialTabMessages', 'messagesByTag', 'groupMessages', 'internalMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle'].includes(exportType) && (() => {
+          {!['specialTabMessages', 'messagesByTag', 'groupMessages', 'internalMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc'].includes(exportType) && (() => {
             const emailCount = Number(estimate.breakdown?.email?.count) || 0;
             const smsCount = Number(estimate.breakdown?.smsWhatsapp?.count) || 0;
             // Per-count message price + savings vs $0.018 base (mirrors getMessageCreditPrice).
@@ -784,6 +784,24 @@ export default function ExportEstimateModal({
                 </>
               )}
 
+              {exportType === 'contactBundleDoc' && (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-700">Records found</span>
+                    <span className="font-medium">{formatNumber(estimate.itemCounts?.total ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-700">Price per Record</span>
+                    <span className="font-medium text-gray-800">$0.05</span>
+                  </div>
+                  <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
+                    Google Doc (.docx) export — every message, email, and call transcript for the
+                    selected contacts, organized into collapsible sections. Flat $0.05 per record,
+                    no volume discounts.
+                  </div>
+                </>
+              )}
+
               {estimate.discountPercent > 0 && (
                 <div className="flex justify-between items-center text-green-600">
                   <span className="flex items-center gap-1">
@@ -829,7 +847,7 @@ export default function ExportEstimateModal({
           {/* Volume Discount Tiers (percentage, flat-rate items only). Hidden for standalone-billed
               flows and for messages-only exports — those use the message ladder, not these % tiers,
               so showing them would misleadingly highlight the "0%" row. */}
-          {hasDiscountableItems && (estimate.discountTiers?.length > 0) && !['specialTabMessages', 'messagesByTag', 'groupMessages', 'internalMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle'].includes(exportType) && (
+          {hasDiscountableItems && (estimate.discountTiers?.length > 0) && !['specialTabMessages', 'messagesByTag', 'groupMessages', 'internalMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc'].includes(exportType) && (
           <Collapse ghost className="bg-gray-50 rounded-lg" defaultActiveKey={estimate.discountPercent > 0 ? [] : []}>
             <Panel
               header={

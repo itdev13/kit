@@ -4,6 +4,7 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const axios = require('axios');
 const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
+const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
 
 // Public base URL of the convo-vault backend, used to build the email download link that
 // regenerates a fresh presigned URL on click. Falls back to the prod host.
@@ -862,6 +863,93 @@ function contactBundleToCSV(records, includeHeader = true) {
   return header + rows + (rows.length > 0 ? '\n' : '');
 }
 
+/**
+ * Build the Contact Bundle (Google Doc) .docx Buffer from ALL contactBundle records.
+ *
+ * Google Docs collapses by heading style, so the structure mirrors the bundle hierarchy:
+ *   Heading 1  = each contact (ContactID)
+ *   Heading 2  = each channel/conversation group within that contact
+ *   body       = each message (date / direction / from / to, then body or call transcript)
+ *
+ * Records use the SAME field shape as contactBundleToCSV:
+ *   { contactId, conversationId, messageId, category, channel, direction, dateAdded,
+ *     from, to, subject, body, status, durationSeconds, transcription }
+ *
+ * A .docx is a binary zip and cannot be streamed in text chunks — it is built as ONE complete
+ * file in memory and returned as a Buffer for a single S3 PutObject.
+ */
+async function buildContactBundleDocx(records) {
+  const children = [];
+
+  // Group records by contactId (records already arrive sorted by dateAdded ASC).
+  const byContact = new Map();
+  for (const r of records) {
+    const cid = r.contactId || 'unknown';
+    if (!byContact.has(cid)) byContact.set(cid, []);
+    byContact.get(cid).push(r);
+  }
+
+  for (const [contactId, contactRows] of byContact) {
+    // Heading 1 — the contact (collapsible root in Google Docs).
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: `Contact: ${contactId}` })]
+    }));
+
+    // Group this contact's records by channel/conversation (Heading 2).
+    const byChannel = new Map();
+    for (const r of contactRows) {
+      const label = (r.channel || r.category || 'OTHER');
+      const key = `${label}::${r.conversationId || ''}`;
+      if (!byChannel.has(key)) byChannel.set(key, { label, conversationId: r.conversationId || '', rows: [] });
+      byChannel.get(key).rows.push(r);
+    }
+
+    for (const group of byChannel.values()) {
+      const h2 = group.conversationId
+        ? `${group.label} — conversation ${group.conversationId}`
+        : `${group.label}`;
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: h2 })]
+      }));
+
+      for (const r of group.rows) {
+        // For call rows, prefer the transcription (what the bundle is paying for), else body.
+        const bodyOrTranscript = r.category === 'call'
+          ? (r.transcription || r.body || '')
+          : (r.body || '');
+
+        // Metadata line (date / direction / from / to [/ subject]).
+        const metaParts = [];
+        if (r.dateAdded) metaParts.push(String(r.dateAdded));
+        if (r.direction) metaParts.push(String(r.direction));
+        if (r.from) metaParts.push(`from: ${r.from}`);
+        if (r.to) metaParts.push(`to: ${r.to}`);
+        if (r.subject) metaParts.push(`subject: ${r.subject}`);
+        if (r.durationSeconds != null && r.durationSeconds !== '') metaParts.push(`duration: ${r.durationSeconds}s`);
+
+        children.push(new Paragraph({
+          children: [new TextRun({ text: metaParts.join('  |  '), bold: true })]
+        }));
+
+        // Message body / transcript. Split on newlines so each line is its own paragraph.
+        const bodyText = String(bodyOrTranscript || '');
+        const lines = bodyText.length ? bodyText.split(/\r?\n/) : [''];
+        for (const line of lines) {
+          children.push(new Paragraph({ children: [new TextRun({ text: line })] }));
+        }
+
+        // Spacer paragraph between messages.
+        children.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
+      }
+    }
+  }
+
+  const doc = new Document({ sections: [{ children }] });
+  return await Packer.toBuffer(doc);
+}
+
 
 /**
  * Convert notes to CSV format
@@ -1439,6 +1527,7 @@ async function sendEmail(email, downloadUrl, jobDetails) {
         jobDetails.exportType === 'callTranscriptions' ? 'Call Transcriptions' :
         jobDetails.exportType === 'callRecordings' ? 'Call Recordings' :
         jobDetails.exportType === 'opportunityStageHistory' ? 'Opportunity Stage History' :
+        jobDetails.exportType === 'contactBundleDoc' ? 'Contact Bundle (Google Doc)' :
         jobDetails.exportType === 'contacts' ? 'Contacts' : 'Messages'
       } Export is Ready`,
       htmlContent: `
@@ -1672,6 +1761,118 @@ exports.handler = async (event, context) => {
   }
 
   try {
+
+    // === CONTACT BUNDLE (GOOGLE DOC): dedicated single-file .docx path ===
+    // A .docx is a BINARY zip and cannot be streamed in text chunks like the CSV path. We read
+    // ALL record chunks for this job up front, build one complete .docx Buffer in memory, and
+    // PutObject it directly (never touching the multipart/append machinery). Then we finalize the
+    // job, clean up the chunk docs, and send the completion email — mirroring the CSV finalize.
+    if (job.exportType === 'contactBundleDoc') {
+      log('Contact Bundle (Google Doc): building .docx from all chunks');
+
+      // Locate the root SpecialExport doc (chunk 0 carries exportJobId; siblings share groupId).
+      let rootExport = await db.collection('specialexports').findOne({
+        exportJobId: new ObjectId(exportJobId),
+        status: 'ready'
+      });
+      if (!rootExport) {
+        rootExport = await db.collection('specialexports').findOne({
+          locationId: job.locationId,
+          status: 'ready',
+          chunkIndex: { $in: [0, null] }
+        }, { sort: { createdAt: -1 } });
+      }
+      if (!rootExport) {
+        throw new Error('No pre-fetched records found in specialexports for this contactBundleDoc job');
+      }
+
+      // Records live in the `messages` field (same chunk path as contactBundle).
+      const groupId = rootExport._id;
+      const totalChunks = rootExport.totalChunks || 1;
+      const allRecords = [...(rootExport.messages || [])];
+      if (totalChunks > 1) {
+        const siblings = await db.collection('specialexports')
+          .find({ groupId, status: 'ready' })
+          .sort({ chunkIndex: 1 })
+          .toArray();
+        for (const s of siblings) {
+          if (String(s._id) === String(groupId)) continue; // skip root (already included)
+          allRecords.push(...(s.messages || []));
+        }
+      }
+
+      log('Contact Bundle (Google Doc): records assembled', { totalChunks, recordCount: allRecords.length });
+
+      // .docx is always .docx regardless of the requested format.
+      const docS3Key = `exports/${job.companyId}/${job.locationId}/${exportJobId}.docx`;
+      const docFilename = `${job.exportType}_export.docx`;
+      const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      const docBuffer = await buildContactBundleDocx(allRecords);
+
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: docS3Key,
+        Body: docBuffer,
+        ContentType: DOCX_CONTENT_TYPE,
+        ContentDisposition: `attachment; filename="${docFilename}"`
+      }));
+      log('Contact Bundle (Google Doc): .docx uploaded via putObject', { size: docBuffer.length });
+
+      const downloadUrl = await getSignedUrl(s3, new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: docS3Key
+      }), { expiresIn: 7 * 24 * 60 * 60 });
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const downloadToken = job.downloadToken || crypto.randomBytes(24).toString('hex');
+
+      const processedItems = allRecords.length;
+      await updateJob(db, exportJobId, {
+        status: 'completed',
+        s3Key: docS3Key,
+        s3Bucket: S3_BUCKET,
+        downloadUrl,
+        downloadUrlExpiresAt: expiresAt,
+        downloadToken,
+        processedItems,
+        completedAt: new Date(),
+        totalBatches: 1
+      });
+
+      // Clean up chunk docs (TTL index is the safety net if this delete fails).
+      try {
+        const { deletedCount } = await db.collection('specialexports').deleteMany({
+          $or: [{ _id: groupId }, { groupId }]
+        });
+        log('Contact Bundle (Google Doc): SpecialExport cleanup', { deletedCount });
+      } catch (cleanupErr) {
+        log('Contact Bundle (Google Doc): cleanup failed (TTL will handle it)', { error: cleanupErr.message });
+      }
+
+      let emailSent = false;
+      if (job.notificationEmail) {
+        const emailDownloadUrl = `${PUBLIC_API_URL}/api/billing/download-email/${exportJobId}?token=${downloadToken}`;
+        emailSent = await sendEmail(job.notificationEmail, emailDownloadUrl, {
+          exportType: job.exportType,
+          format: 'docx',
+          totalItems: processedItems
+        });
+        await updateJob(db, exportJobId, { emailSent });
+      }
+
+      log('Contact Bundle (Google Doc): export completed', { processedItems, emailSent });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          message: 'Export completed',
+          processedItems,
+          totalBatches: 1,
+          downloadUrl,
+          emailSent
+        })
+      };
+    }
 
     // Initialize or get S3 multipart upload
     let uploadId = job.s3Upload?.uploadId;
@@ -2210,7 +2411,7 @@ exports.handler = async (event, context) => {
       cursor = contactsCursor ? JSON.stringify(contactsCursor) : null;
       hasMoreData = !!cursor;
 
-    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle') {
+    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle' || job.exportType === 'contactBundleDoc') {
       // === SPECIAL MESSAGES / CALL TRANSCRIPTIONS: Read pre-fetched records from chunked specialexports ===
       // Chunk 0 is the "root" doc (has exportJobId). Remaining chunks share groupId = root._id.
       // Each chunk holds up to CHUNK_SIZE (5000) messages, matching BATCH_SIZE so one invocation = one chunk.

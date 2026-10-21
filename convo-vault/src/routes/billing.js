@@ -118,7 +118,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -2536,6 +2536,274 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       });
     }
 
+    else if (exportType === 'contactBundleDoc') {
+      // Google-Doc (.docx) variant of contactBundle. SAME per-contact data gather as contactBundle,
+      // SAME chunked SpecialExport persist (rows in `messages`, filters.type='contactBundleDoc').
+      // ONLY difference: flat $0.05 per record pricing (no SMS/Email/Call rate scheme), and the
+      // Lambda renders a collapsible .docx instead of CSV/JSON.
+      const requestedContactIds = Array.isArray(filters?.contactIds)
+        ? filters.contactIds.filter(Boolean)
+        : [];
+      if (requestedContactIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Contact Bundle (Google Doc) export requires at least one contactId in filters.contactIds.'
+        });
+      }
+
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const withRetry = async (fn, maxRetries = 5) => {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try { return await fn(); }
+          catch (err) {
+            const is429 = err.response?.status === 429;
+            const is5xx = err.response?.status >= 500 && err.response?.status < 600;
+            if ((is429 || is5xx) && attempt < maxRetries) {
+              const delay = Math.min(20000, Math.pow(2, attempt) * 1500) + Math.floor(Math.random() * 400);
+              await sleep(delay);
+            } else throw err;
+          }
+        }
+      };
+
+      const CALL_STATUSES_OK = new Set(['completed', 'answered', 'voicemail']);
+      // Numeric type codes from /conversations/{convId}/messages:
+      //   1 = Call, 3 = Email; 25–29 = activity events (skip)
+      const isEmailMsg = (m) => {
+        const t = m.type ?? m.messageType;
+        if (typeof t === 'number') return t === 3;
+        return String(t || '').toUpperCase() === 'TYPE_EMAIL';
+      };
+      const isCallMsg = (m) => {
+        const t = m.type ?? m.messageType;
+        if (typeof t === 'number') return t === 1;
+        return String(t || '').toUpperCase() === 'TYPE_CALL';
+      };
+      const isActivity = (m) => {
+        const t = m.type ?? m.messageType;
+        if (typeof t === 'number') return t >= 25 && t <= 29;
+        return String(t || '').toUpperCase().startsWith('TYPE_ACTIVITY');
+      };
+      const channelLabel = (m) => {
+        const t = m.type ?? m.messageType;
+        if (typeof t === 'string') return t.replace(/^TYPE_/, '');
+        // Best-effort numeric → label mapping for the CSV.
+        switch (t) {
+          case 1: return 'CALL';
+          case 2: return 'SMS';
+          case 3: return 'EMAIL';
+          case 20: return 'SMS'; // observed in production logs
+          case 21: return 'EMAIL';
+          default: return String(t || 'UNKNOWN');
+        }
+      };
+
+      // Per-contact worker — returns the rows it collected. Stays self-contained so we can
+      // run several in parallel without sharing mutable state.
+      const walkOneContact = async (contactId) => {
+        const rows = [];
+
+        // 1) List the contact's conversations (1:1 in practice; one call with limit=100 covers it).
+        const convoResp = await withRetry(() => ghlService.searchConversations(locationId, {
+          contactId,
+          limit: 100
+        }));
+        const convoIds = (convoResp.conversations || []).map(c => c.id);
+
+        // 2) For each conversation, pull NON-EMAIL messages from the per-conversation endpoint.
+        //    Emails are fetched separately via ES below; activity events are dropped.
+        const CONV_PARALLEL = 2;
+        for (let i = 0; i < convoIds.length; i += CONV_PARALLEL) {
+          const batch = convoIds.slice(i, i + CONV_PARALLEL);
+          const batchResults = await Promise.all(batch.map(async (cId) => {
+            const out = [];
+            let cursor = undefined;
+            let pages = 0;
+            while (true) {
+              pages++;
+              const opts = { limit: 100 };
+              if (cursor) opts.lastMessageId = cursor;
+              const r = await withRetry(() => ghlService.getMessages(locationId, cId, opts));
+              const wrapper = r.messages || {};
+              const pageMsgs = wrapper.messages || [];
+              for (const m of pageMsgs) {
+                if (isEmailMsg(m)) continue;       // emails come from ES below
+                out.push({ ...m, conversationId: cId });
+              }
+              if (pageMsgs.length < 100 || !wrapper.nextPage) break;
+              cursor = wrapper.lastMessageId;
+              if (pages > 20) break;
+            }
+            return out;
+          }));
+          for (const arr of batchResults) {
+            for (const m of arr) {
+              const callEligible = isCallMsg(m) && CALL_STATUSES_OK.has(String(m.status || '').toLowerCase());
+              rows.push({
+                contactId,
+                conversationId: m.conversationId || '',
+                messageId: m.id,
+                category: isCallMsg(m) ? 'call' : 'sms',
+                channel: channelLabel(m),
+                direction: m.direction || '',
+                dateAdded: m.dateAdded || m.dateUpdated || '',
+                from: m.from || '',
+                to: m.to || '',
+                body: m.body || '',
+                subject: '',
+                status: m.status || '',
+                durationSeconds: m.duration || m.meta?.call?.duration || null,
+                _needsTranscript: callEligible
+              });
+            }
+          }
+        }
+
+        // 3) Fetch transcripts for eligible calls (concurrency 3, same as CallTranscriptions tab).
+        const transcribeQueue = rows.filter(r => r._needsTranscript);
+        const TRANSCRIBE_PARALLEL = 3;
+        for (let i = 0; i < transcribeQueue.length; i += TRANSCRIBE_PARALLEL) {
+          const batch = transcribeQueue.slice(i, i + TRANSCRIBE_PARALLEL);
+          await Promise.all(batch.map(async (row) => {
+            try {
+              const text = await withRetry(() => ghlService.getMessageTranscription(locationId, row.messageId));
+              row.transcription = text || '';
+            } catch {
+              row.transcription = '';
+            }
+          }));
+        }
+        for (const r of rows) delete r._needsTranscript;
+
+        // 4) Fetch ALL emails for this contact via the ES bulk endpoint (channel=Email).
+        let cursor = undefined;
+        let pages = 0;
+        while (true) {
+          pages++;
+          const r = await withRetry(() => ghlService.exportMessages(locationId, {
+            contactId,
+            channel: 'Email',
+            limit: 100,
+            cursor: cursor || undefined,
+            startDate: new Date(0).toISOString(),
+            endDate: new Date().toISOString()
+          }));
+          const msgs = r.messages || [];
+          for (const m of msgs) {
+            rows.push({
+              contactId,
+              conversationId: m.conversationId || '',
+              messageId: m.id,
+              category: 'email',
+              channel: 'EMAIL',
+              direction: m.direction || m.meta?.email?.direction || '',
+              dateAdded: m.dateAdded || m.dateUpdated || '',
+              from: m.meta?.email?.from || m.from || '',
+              to: (m.meta?.email?.to || []).join('; ') || m.to || '',
+              body: m.body || '',
+              subject: m.meta?.email?.subject || '',
+              status: m.status || '',
+              durationSeconds: null
+            });
+          }
+          if (msgs.length < 100 || !r.nextPage) break;
+          cursor = r.lastMessageId;
+          if (pages > 50) break;
+        }
+
+        return rows;
+      };
+
+      // Walk contacts in parallel batches of 2 (same conservative cap as OSH).
+      const allRows = [];
+      const CONTACT_PARALLEL = 2;
+      for (let i = 0; i < requestedContactIds.length; i += CONTACT_PARALLEL) {
+        const batch = requestedContactIds.slice(i, i + CONTACT_PARALLEL);
+        const results = await Promise.allSettled(batch.map(cid => walkOneContact(cid)));
+        for (const r of results) {
+          if (r.status === 'fulfilled') allRows.push(...r.value);
+          else logger.warn('Contact Bundle (Google Doc): contact walk failed', { error: r.reason?.message });
+        }
+      }
+
+      // Sort by dateAdded ASC so the doc reads chronologically across all categories.
+      allRows.sort((a, b) => {
+        const ta = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+        const tb = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+        return ta - tb;
+      });
+
+      // Flat $0.05 per record — no three-rate scheme, no volume discount.
+      const DOC_PRICE = 0.05;
+      const finalAmount = allRows.length * DOC_PRICE;
+
+      logger.info('Contact Bundle (Google Doc): walk complete', {
+        locationId,
+        contactCount: requestedContactIds.length,
+        totalRows: allRows.length,
+        finalAmount
+      });
+
+      if (allRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No messages found for the selected contacts.'
+        });
+      }
+
+      // Persist chunked. The Lambda reads from `messages` field via the existing path.
+      const CHUNK_SIZE = 5000;
+      const totalChunks = Math.max(1, Math.ceil(allRows.length / CHUNK_SIZE));
+      const specialExport = await SpecialExport.create({
+        locationId,
+        filters: { type: 'contactBundleDoc', contactIds: requestedContactIds },
+        messages: allRows.slice(0, CHUNK_SIZE),
+        totalMessages: allRows.length,
+        totalConversations: 0,
+        chunkIndex: 0,
+        totalChunks,
+        status: 'ready'
+      });
+      if (totalChunks > 1) {
+        const chunkDocs = [];
+        for (let ci = 1; ci < totalChunks; ci++) {
+          chunkDocs.push({
+            locationId,
+            filters: { type: 'contactBundleDoc', contactIds: requestedContactIds },
+            messages: allRows.slice(ci * CHUNK_SIZE, (ci + 1) * CHUNK_SIZE),
+            totalMessages: allRows.length,
+            groupId: specialExport._id,
+            chunkIndex: ci,
+            totalChunks,
+            status: 'ready',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+        await SpecialExport.insertMany(chunkDocs);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          estimate: {
+            itemCounts: {
+              contactBundleDoc: allRows.length,
+              total: allRows.length
+            },
+            baseAmount: finalAmount,
+            discountPercent: 0,
+            discountAmount: 0,
+            finalAmount,
+            finalAmountDollars: finalAmount
+          },
+          filters,
+          exportType,
+          specialExportId: specialExport._id
+        }
+      });
+    }
+
     // Get access token to fetch actual prices from GHL
     const tokenData = await ghlService.getValidToken(locationId);
     const accessToken = tokenData.accessToken || tokenData;
@@ -2608,7 +2876,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -2834,6 +3102,11 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         counts.contactBundleCallCount = callC;
         counts.contactBundleTotal = totalItems;
 
+      } else if (exportType === 'contactBundleDoc') {
+        // Flat $0.05-per-record billing. estimatedTotal was set at /estimate from allRows.length.
+        totalItems = filters?.estimatedTotal || 0;
+        counts.contactBundleDocTotal = totalItems;
+
       } else {
         // Use estimatedTotal from the estimate step if available (avoids GHL returning a different count)
         if (filters?.estimatedTotal) {
@@ -2970,6 +3243,12 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         qty: totalItems,
         description: `Contact bundle export (${smsC} SMS + ${emailC} email + ${callC} call)`
       }];
+    } else if (exportType === 'contactBundleDoc') {
+      // Contact Bundle (Google Doc): flat $0.05 per record, single meter charge, no discount.
+      const unitPrice = 0.05;
+      const finalAmount = totalItems * unitPrice;
+      estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
+      meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Contact bundle (Google Doc) export' }];
     } else {
       // Step 3: Calculate pricing with actual GHL meter prices
       estimate = await billingService.calculateEstimateWithPrices(counts, accessToken, locationId);
@@ -3174,7 +3453,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
 
     // Step 9a: Link the SpecialExport to this job.
     // For specialTabMessages and opportunityStageHistory it was created during /estimate; for callTranscriptions it was created in Step 7a (post-charge).
-    if (['specialTabMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'messagesByTag', 'groupMessages', 'internalMessages'].includes(exportType) && filters?.specialExportId) {
+    if (['specialTabMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'].includes(exportType) && filters?.specialExportId) {
       try {
         await SpecialExport.findByIdAndUpdate(filters.specialExportId, {
           exportJobId: exportJob._id
@@ -3495,10 +3774,11 @@ router.get('/export-history', authenticateSession, async (req, res) => {
 router.get('/pricing', async (req, res) => {
   const locationId = req.query?.locationId;
   // Custom Charge and Call Transcriptions stay gated; Complete Messages and Import Notes are now live for all locations.
-  const [customChargeLocationIds, callTranscriptionsLocationIds, callRecordingsLocationIds] = await Promise.all([
+  const [customChargeLocationIds, callTranscriptionsLocationIds, callRecordingsLocationIds, contactBundleDocLocationIds] = await Promise.all([
     AppConfig.getValues('customChargeLocationIds'),
     AppConfig.getValues('callTranscriptionsLocationIds'),
-    AppConfig.getValues('callRecordingsLocationIds')
+    AppConfig.getValues('callRecordingsLocationIds'),
+    AppConfig.getValues('contactBundleDocLocationIds')
   ]);
   // "*" in values = show to all locations (global kill-switch)
   const customChargeEnabled = locationId
@@ -3510,6 +3790,9 @@ router.get('/pricing', async (req, res) => {
   const callRecordingsEnabled = locationId
     ? (callRecordingsLocationIds.includes('*') || callRecordingsLocationIds.includes(locationId))
     : false;
+  const contactBundleDocEnabled = locationId
+    ? (contactBundleDocLocationIds.includes('*') || contactBundleDocLocationIds.includes(locationId))
+    : false;
 
   // Per-tab kill-switch. One AppConfig doc per tab: key `disabledTab:<tab>`, whose `values`
   // holds a mix of locationIds AND companyIds. A tab is disabled for this location if its
@@ -3518,7 +3801,7 @@ router.get('/pricing', async (req, res) => {
   // Checked tabs = every export/import tab id the UI can render, plus 'import'/'export'.
   const CONFIGURABLE_TABS = [
     'import', 'export',
-    'messages', 'specialTabMessages', 'contactBundle', 'messagesByTag', 'callTranscriptions', 'callRecordings',
+    'messages', 'specialTabMessages', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'callTranscriptions', 'callRecordings',
     'contacts', 'opportunities', 'opportunityStageHistory', 'formSubmissions',
     'notes', 'tasks', 'templates', 'links', 'callLogs', 'customFields', 'customValues', 'tags',
     'importContacts', 'importNotes', 'importCustomFields', 'importCustomValues'
@@ -3553,6 +3836,7 @@ router.get('/pricing', async (req, res) => {
       customChargeEnabled,
       callTranscriptionsEnabled,
       callRecordingsEnabled,
+      contactBundleDocEnabled,
       // Tab ids (and/or 'import') to hide for this location. UI filters its tab list by this.
       disabledTabs
     }

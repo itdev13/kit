@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [customChargeEnabled, setCustomChargeEnabled] = useState(false);
   const [callTranscriptionsEnabled, setCallTranscriptionsEnabled] = useState(false);
   const [callRecordingsEnabled, setCallRecordingsEnabled] = useState(false);
+  const [contactBundleDocEnabled, setContactBundleDocEnabled] = useState(false);
   // Per-location tab kill-switch (from AppConfig `disabledTabs:<locationId>`). Holds tab ids to
   // hide, and/or the value 'import' to hide the whole Import mode. Empty = nothing disabled.
   const [disabledTabs, setDisabledTabs] = useState([]);
@@ -74,6 +75,7 @@ export default function Dashboard() {
       setCustomChargeEnabled(!!res?.data?.customChargeEnabled);
       setCallTranscriptionsEnabled(!!res?.data?.callTranscriptionsEnabled);
       setCallRecordingsEnabled(!!res?.data?.callRecordingsEnabled);
+      setContactBundleDocEnabled(!!res?.data?.contactBundleDocEnabled);
       setDisabledTabs(Array.isArray(res?.data?.disabledTabs) ? res.data.disabledTabs : []);
     }).catch(() => {});
   }, [location?.id]);
@@ -566,7 +568,7 @@ export default function Dashboard() {
                 {activeTab === 'opportunityStageHistory' && features?.opportunityStageHistory && <OpportunityStageHistoryTab />}
                 {activeTab === 'callTranscriptions' && callTranscriptionsEnabled && <CallTranscriptionsTab />}
                 {activeTab === 'callRecordings' && <CallRecordingsTab />}
-                {activeTab === 'contactBundle' && <ContactBundleTab />}
+                {activeTab === 'contactBundle' && <ContactBundleTab contactBundleDocEnabled={contactBundleDocEnabled} />}
                 {activeTab === 'messagesByTag' && <MessagesByTagTab />}
                 {activeTab === 'groupMessages' && <GroupMessagesTab />}
                 {activeTab === 'customCharge' && customChargeEnabled && <CustomChargeTab />}

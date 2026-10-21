@@ -12,6 +12,7 @@
     "@aws-sdk/client-s3": "^3.1004.0",
     "@aws-sdk/s3-request-presigner": "^3.1004.0",
     "axios": "^1.7.7",
+    "docx": "^8.5.0",
     "mongodb": "^6.10.0"
   },
   "engines": {
