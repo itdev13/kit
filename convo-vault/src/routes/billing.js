@@ -2752,8 +2752,8 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         return ta - tb;
       });
 
-      // Flat $0.05 per record — no three-rate scheme, no volume discount.
-      const DOC_PRICE = 0.05;
+      // Flat $0.08 per record — no three-rate scheme, no volume discount.
+      const DOC_PRICE = 0.08;
       const finalAmount = allRows.length * DOC_PRICE;
 
       logger.info('Contact Bundle (Google Doc): walk complete', {
@@ -3263,8 +3263,8 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         description: `Contact bundle export (${smsC} SMS + ${emailC} email + ${callC} call)`
       }];
     } else if (exportType === 'contactBundleDoc') {
-      // Contact Bundle (Google Doc): flat $0.05 per record, single meter charge, no discount.
-      const unitPrice = 0.05;
+      // Contact Bundle (Google Doc): flat $0.08 per record, single meter charge, no discount.
+      const unitPrice = 0.08;
       const finalAmount = totalItems * unitPrice;
       estimate = { baseAmount: finalAmount, discountPercent: 0, discountAmount: 0, finalAmount };
       meterCharges = [{ meterId: '69864aed1265653fdd7c0620', qty: totalItems, description: 'Contact bundle (Google Doc) export' }];

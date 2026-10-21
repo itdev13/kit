@@ -275,7 +275,7 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
             {isDoc ? (
               <>
                 {' '}Output is a <strong>PDF</strong> laid out like your GHL conversation view — chat bubbles grouped
-                by contact and conversation. Pricing: <strong>$0.05 per record</strong> — no volume discount.
+                by contact and conversation. Pricing: <strong>$0.08 per record</strong> — no volume discount.
               </>
             ) : (
               <>
