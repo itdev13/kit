@@ -2568,6 +2568,22 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         }
       };
 
+      // Doc-only enrichment: (a) account timezone so times render in the sub-account's zone,
+      // (b) a userId->name map so outbound messages show the sender's name instead of "ME".
+      let _accountTimezone = '';
+      try {
+        const locDetails = await withRetry(() => ghlService.getLocationDetails(locationId));
+        _accountTimezone = locDetails?.locationTimezone || locDetails?.timezone || '';
+      } catch (e) { logger.warn('contactBundleDoc: timezone fetch failed (non-blocking)', { error: e.message }); }
+      const _userMap = {};
+      try {
+        const _users = await withRetry(() => ghlService.searchUsers(locationId, { companyId: req.user?.companyId }));
+        for (const u of (_users || [])) {
+          const nm = u.name || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || '';
+          if (u.id && nm) _userMap[u.id] = nm;
+        }
+      } catch (e) { logger.warn('contactBundleDoc: users fetch failed (non-blocking)', { error: e.message }); }
+
       const CALL_STATUSES_OK = new Set(['completed', 'answered', 'voicemail']);
       // Numeric type codes from /conversations/{convId}/messages:
       //   1 = Call, 3 = Email; 25–29 = activity events (skip)
@@ -2668,6 +2684,8 @@ router.post('/estimate', authenticateSession, async (req, res) => {
                 subject: '',
                 status: m.status || '',
                 durationSeconds: m.duration || m.meta?.call?.duration || null,
+                userId: m.userId || '',
+                senderName: _userMap[m.userId] || '',
                 _needsTranscript: callEligible
               });
             }
@@ -2722,7 +2740,9 @@ router.post('/estimate', authenticateSession, async (req, res) => {
               body: m.body || '',
               subject: m.meta?.email?.subject || '',
               status: m.status || '',
-              durationSeconds: null
+              durationSeconds: null,
+              userId: m.userId || '',
+              senderName: _userMap[m.userId] || ''
             });
           }
           if (msgs.length < 100 || !r.nextPage) break;
@@ -2744,6 +2764,9 @@ router.post('/estimate', authenticateSession, async (req, res) => {
           else logger.warn('Contact Bundle (Google Doc): contact walk failed', { error: r.reason?.message });
         }
       }
+
+      // Stamp the account timezone on every row so the Lambda renders times in the sub-account's zone.
+      if (_accountTimezone) for (const r of allRows) r.timezone = _accountTimezone;
 
       // Sort by dateAdded ASC so the doc reads chronologically across all categories.
       allRows.sort((a, b) => {

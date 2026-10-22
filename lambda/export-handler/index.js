@@ -907,9 +907,25 @@ function buildContactBundleHtml(records) {
     return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
   };
   const isImageUrl = (u) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(u || ''));
-  const dayKey = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toISOString().slice(0, 10); };
-  const dayLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
-  const timeLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
+  // Account timezone (stamped on rows by the backend) — render all times in the sub-account's zone.
+  const tz = records.find(r => r && r.timezone)?.timezone || undefined;
+  const tzOpts = (o) => (tz ? { ...o, timeZone: tz } : o);
+  const dayKey = (d) => {
+    const t = new Date(d);
+    if (isNaN(t)) return '';
+    try { return t.toLocaleDateString('en-CA', tzOpts({})); } catch { return t.toISOString().slice(0, 10); }
+  };
+  const dayLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleDateString('en-US', tzOpts({ month: 'short', day: 'numeric' })); };
+  const timeLabel = (d) => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleTimeString('en-US', tzOpts({ hour: 'numeric', minute: '2-digit' })); };
+  // Call duration HH:MM:SS style: <60s → "Ns"; <60min → "Mm Ss"; ≥60min → "Hh Mm Ss".
+  const formatDuration = (secs) => {
+    const s = parseInt(secs, 10);
+    if (!Number.isFinite(s) || s <= 0) return '';
+    if (s < 60) return `${s}s`;
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (s < 3600) return `${m}m ${sec}s`;
+    return `${h}h ${m}m ${sec}s`;
+  };
 
   let sections = '';
   for (const [contactId, rows] of byContact) {
@@ -923,7 +939,7 @@ function buildContactBundleHtml(records) {
           '<span class="eh-id">(' + esc(contactId) + ')</span></div>' +
         (meta.contactEmail ? '<div class="eh-sub">Email: ' + esc(meta.contactEmail) + '</div>' : '') +
         (meta.contactPhone ? '<div class="eh-sub">Phone: ' + esc(meta.contactPhone) + '</div>' : '') +
-        '<div class="eh-sub">Exported at ' + esc(new Date().toLocaleString('en-US')) + '</div>' +
+        '<div class="eh-sub">Exported at ' + esc(new Date().toLocaleString('en-US', tzOpts({}))) + '</div>' +
       '</div>';
 
     // Inbox header bar (GHL-style).
@@ -943,18 +959,21 @@ function buildContactBundleHtml(records) {
 
       const outbound = String(r.direction || '').toLowerCase() === 'outbound';
       const side = outbound ? 'out' : 'in';
-      const avInit = outbound ? 'ME' : esc(initials(meta.contactName || contactId));
+      // Outbound: show the sending user's name (fallback to "Team"); inbound: the contact.
+      const senderName = outbound ? (r.senderName || 'Team') : (meta.contactName || contactId);
+      const avInit = esc(initials(senderName));
       const channel = esc(r.channel || r.category || '');
       const isCall = r.category === 'call' || /call/i.test(channel);
 
       // Bubble content.
       let inner = '';
       if (channel) inner += '<div class="badge">☎︎ ' + channel + '</div>';
+      inner += '<div class="sender">' + esc(senderName) + '</div>';
       if (r.subject) inner += '<div class="subj">' + esc(r.subject) + '</div>';
 
       if (isCall) {
-        const dur = r.durationSeconds ? ' · ' + esc(r.durationSeconds) + 's' : '';
-        inner += '<div class="callrow">\u{1F4DE} Call' + (r.status ? ' ' + esc(r.status) : ' completed') + dur + '</div>';
+        const dur = formatDuration(r.durationSeconds);
+        inner += '<div class="callrow">\u{1F4DE} Call' + (r.status ? ' ' + esc(r.status) : ' completed') + (dur ? ' · ' + esc(dur) : '') + '</div>';
         const t = r.transcription || '';
         if (t) inner += '<div class="transcript"><div class="tr-h">Transcript</div>' + esc(t).replace(/\r?\n/g, '<br>') + '</div>';
       } else {
@@ -962,7 +981,8 @@ function buildContactBundleHtml(records) {
         if (body) inner += '<div class="body">' + body + '</div>';
       }
 
-      // Attachments — BIG inline images when image URLs; otherwise a link.
+      // Attachments — BIG inline images when image URLs; otherwise a link. Shown for ALL rows
+      // (including calls — a call may carry its recording/voicemail as an attachment).
       const atts = Array.isArray(r.attachments) ? r.attachments.filter(Boolean) : [];
       for (const url of atts) {
         if (isImageUrl(url)) {
@@ -1011,6 +1031,7 @@ function buildContactBundleHtml(records) {
     '.row.in .bubble{border-bottom-left-radius:4px;}' +
     '.row.out .bubble{background:#dbeafe;border-bottom-right-radius:4px;}' +
     '.badge{display:inline-block;background:#ecfdf5;color:#047857;font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;margin-bottom:5px;}' +
+    '.sender{font-size:10px;font-weight:700;color:#475569;margin-bottom:3px;}' +
     '.subj{font-weight:600;margin-bottom:3px;}' +
     '.body{white-space:normal;word-break:break-word;}' +
     '.body.empty{color:#9ca3af;font-style:italic;}' +
