@@ -2975,6 +2975,22 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       const searchContactIds = Array.isArray(filters?.contactIds) ? filters.contactIds.filter(Boolean) : [];
       const query = (filters?.query || '').trim() || undefined;
 
+      // GHL's POST /notes/search REQUIRES relations (1-200 contacts) — searching without contacts
+      // returns 422 (their DTO marks `relations` optional but is missing @IsOptional(), so the
+      // ArrayMinSize(1) validation always fires). So contacts are mandatory for this export.
+      if (searchContactIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Select at least one contact to export notes. (Notes search requires contacts — up to 200 at a time.)'
+        });
+      }
+      if (searchContactIds.length > 200) {
+        return res.status(400).json({
+          success: false,
+          error: 'Notes search supports up to 200 contacts at a time. Please reduce your selection.'
+        });
+      }
+
       // Walk all pages. limit=2000 is the API max; skip-paginate until a short page.
       const PAGE = 2000;
       const MAX_PAGES = 500; // 1,000,000 note safety cap

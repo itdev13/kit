@@ -7,10 +7,10 @@ import ExportEstimateModal from '../ExportEstimateModal';
 import ExportProgress from '../ExportProgress';
 
 /**
- * Notes (search) — location-wide notes export via POST /notes/search. No contact required:
- * leave the contact picker empty to export every note in the sub-account. Optional filters:
- *   - contacts (up to 200)   -> relations filter
- *   - search text            -> matches note title / body
+ * Notes (search) — notes export via POST /notes/search. GHL REQUIRES contact relations (1-200), so
+ * contacts are mandatory here (there is no location-wide "all notes" mode on this endpoint). Filters:
+ *   - contacts (1-200, REQUIRED) -> relations filter
+ *   - search text (optional)     -> matches note title / body
  * Priced exactly like the per-contact Notes export ($0.018/note with volume discount). The backend
  * gathers + chunks the notes during /estimate and returns a specialExportId we reuse at charge time.
  */
@@ -187,12 +187,12 @@ export default function NotesSearchTab() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Notes</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Search and export notes across this sub-account — no contact required.
+            Select contacts and export their notes — up to 200 contacts at a time.
           </p>
         </div>
         <Button
           onClick={handleGetEstimate}
-          disabled={isExporting || !location?.id}
+          disabled={isExporting || !location?.id || selectedContactIds.length === 0}
           size="large"
           type="primary"
           className="bg-green-600 hover:bg-green-700 border-green-600"
@@ -222,7 +222,7 @@ export default function NotesSearchTab() {
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Contacts <span className="text-gray-400">(optional)</span>
+            Contacts <span className="text-red-500">*</span> <span className="text-gray-400">(required, up to 200)</span>
           </label>
           <Select
             mode="multiple"
@@ -242,7 +242,7 @@ export default function NotesSearchTab() {
           <p className="text-xs text-gray-500 mt-2">
             {selectedContactIds.length > 0
               ? <><strong>{selectedContactIds.length}</strong> contact{selectedContactIds.length === 1 ? '' : 's'} selected (max 200).</>
-              : 'Leave empty to export ALL notes in the sub-account.'}
+              : 'Select at least one contact — notes export requires contacts.'}
           </p>
         </div>
 
@@ -251,7 +251,6 @@ export default function NotesSearchTab() {
             Search text <span className="text-gray-400">(optional)</span>
           </label>
           <Input
-            size="large"
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
             onPressEnter={handleGetEstimate}
