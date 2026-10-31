@@ -157,13 +157,60 @@ export default function SimpleExportTab({ exportType, title, subtitle, buttonLab
         />
       )}
 
-      <div className="bg-white border-1 border-solid border-gray-200 rounded-xl p-8 shadow-sm text-center">
-        <div className="text-5xl mb-4">{icon}</div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-        <p className="text-gray-500 max-w-md mx-auto">
-          Click <strong>{buttonLabel}</strong> to see how many records are available and the exact
-          price before you pay. We’ll email you a download link when the file is ready.
-        </p>
+      {/* Intro / call-to-action card. Kept compact and actionable so a filter-less export doesn't
+          read as an empty placeholder: icon badge, a short explainer, an in-card estimate button,
+          and three reassurance steps. */}
+      <div className="bg-gradient-to-br from-gray-50 to-white border border-solid border-gray-200 rounded-xl px-6 py-7 shadow-sm">
+        <div className="flex flex-col items-center text-center max-w-lg mx-auto">
+          <div className="w-14 h-14 rounded-2xl bg-green-50 border border-green-100 flex items-center justify-center text-3xl mb-4">
+            {icon}
+          </div>
+          <p className="text-gray-600 leading-relaxed">
+            Click <strong className="text-gray-800">{buttonLabel}</strong> to see how many records are
+            available and the exact price before you pay.
+          </p>
+
+          <div className="mt-5">
+            <Button
+              onClick={handleGetEstimate}
+              disabled={isExporting}
+              size="large"
+              type="primary"
+              className="bg-green-600 hover:bg-green-700 border-green-600"
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              }
+            >
+              {buttonLabel}
+            </Button>
+          </div>
+
+          <div className="mt-6 pt-5 border-t border-gray-100 w-full grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+            <div className="flex items-start gap-2.5">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold">1</span>
+              <div>
+                <div className="text-xs font-semibold text-gray-800">See the count</div>
+                <div className="text-xs text-gray-500">Records &amp; price up front</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold">2</span>
+              <div>
+                <div className="text-xs font-semibold text-gray-800">Pay per use</div>
+                <div className="text-xs text-gray-500">$0.018/{unit}, volume discounts</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold">3</span>
+              <div>
+                <div className="text-xs font-semibold text-gray-800">Emailed when ready</div>
+                <div className="text-xs text-gray-500">Download link sent to you</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {columns.length > 0 && (
