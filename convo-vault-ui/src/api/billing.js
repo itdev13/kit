@@ -106,6 +106,17 @@ export const billingAPI = {
   },
 
   /**
+   * Get calendars for a location (appointments calendar dropdown)
+   * @param {string} locationId - Location ID
+   */
+  getCalendars: async (locationId) => {
+    const response = await apiClient.get('/billing/calendars', {
+      params: { locationId }
+    });
+    return response;
+  },
+
+  /**
    * Search form submissions for a location (preview) — page-based pagination
    */
   searchFormSubmissions: async (locationId, filters = {}, page = 1, limit = 25) => {

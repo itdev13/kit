@@ -120,7 +120,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages', 'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles', 'notesSearch'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -139,8 +139,10 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       }
     }
 
-    // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags)
-    if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags'].includes(exportType)) {
+    // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags
+    // and the Commerce & More list exports which have no date filter). Appointments IS date-scoped
+    // (time-window paginated), so it stays subject to the strict range check.
+    if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles'].includes(exportType)) {
       const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions', 'callRecordings'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
       if (!dateValidation.valid) {
         return res.status(400).json({
@@ -173,6 +175,15 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       customFields: 0,
       customValues: 0,
       tags: 0,
+      appointments: 0,
+      invoices: 0,
+      paymentOrders: 0,
+      paymentTransactions: 0,
+      paymentSubscriptions: 0,
+      surveySubmissions: 0,
+      businesses: 0,
+      products: 0,
+      mediaFiles: 0,
       opportunityStageHistory: 0
     };
 
@@ -402,6 +413,54 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       // Tags: single-shot list, no pagination, no filters
       const result = await ghlService.getLocationTags(locationId);
       counts.tags = result.total || 0;
+
+    } else if (exportType === 'appointments') {
+      // Appointments: calendar events within the selected time window. Requires a calendar
+      // selection (calendarId) and a date range. One probe over the full window gives the count.
+      if (!filters?.calendarId && !filters?.userId && !filters?.groupId) {
+        return res.status(400).json({ success: false, error: 'Please select a calendar to export appointments' });
+      }
+      const result = await ghlService.getAppointments(locationId, {
+        calendarId: filters?.calendarId,
+        userId: filters?.userId,
+        groupId: filters?.groupId,
+        startTime: filters?.startDate ? new Date(filters.startDate).getTime() : undefined,
+        endTime: filters?.endDate ? new Date(filters.endDate).getTime() : undefined
+      });
+      counts.appointments = result.total || 0;
+
+    } else if (exportType === 'invoices') {
+      const result = await ghlService.getInvoices(locationId, { limit: 1, offset: 0 });
+      counts.invoices = result.total || 0;
+
+    } else if (exportType === 'paymentOrders') {
+      const result = await ghlService.getPaymentOrders(locationId, { limit: 1, offset: 0 });
+      counts.paymentOrders = result.total || 0;
+
+    } else if (exportType === 'paymentTransactions') {
+      const result = await ghlService.getPaymentTransactions(locationId, { limit: 1, offset: 0 });
+      counts.paymentTransactions = result.total || 0;
+
+    } else if (exportType === 'paymentSubscriptions') {
+      const result = await ghlService.getPaymentSubscriptions(locationId, { limit: 1, offset: 0 });
+      counts.paymentSubscriptions = result.total || 0;
+
+    } else if (exportType === 'surveySubmissions') {
+      const result = await ghlService.getSurveySubmissions(locationId, { page: 1, limit: 1 });
+      counts.surveySubmissions = result.total || 0;
+
+    } else if (exportType === 'businesses') {
+      // Businesses: single-shot list, no pagination
+      const result = await ghlService.getBusinesses(locationId);
+      counts.businesses = result.total || 0;
+
+    } else if (exportType === 'products') {
+      const result = await ghlService.getProducts(locationId, { limit: 1, offset: 0 });
+      counts.products = result.total || 0;
+
+    } else if (exportType === 'mediaFiles') {
+      const result = await ghlService.getMediaFiles(locationId, { limit: 1, offset: 0 });
+      counts.mediaFiles = result.total || 0;
 
     } else if (exportType === 'opportunityStageHistory') {
       // Opportunity Stage History (gated custom build) — full walk:
@@ -2551,7 +2610,14 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       if (requestedContactIds.length === 0) {
         return res.status(400).json({
           success: false,
-          error: 'Contact Bundle (Google Doc) export requires at least one contactId in filters.contactIds.'
+          error: 'Contact Bundle (Google Doc) export requires a contactId in filters.contactIds.'
+        });
+      }
+      // One contact at a time — the Doc is a single-contact conversation export.
+      if (requestedContactIds.length > 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Contact Bundle (Google Doc) supports one contact at a time. Please select a single contact.'
         });
       }
 
@@ -2620,6 +2686,53 @@ router.post('/estimate', authenticateSession, async (req, res) => {
         return MAP[t] || 'MESSAGE';
       };
 
+      // --- Doc enrichment helpers (the generally-useful subset ported from the standalone client
+      //     script): AI/Automation outbound detection, deep attachment extraction, IVR flag. ---
+      const truthyFlag = (v) => v === true || v === 1 || v === '1' ||
+        (typeof v === 'string' && /^(true|yes)$/i.test(v.trim()));
+      // Classify an OUTBOUND message as AI, Automation, or '' (a human/Team send). Sniffs the many
+      // places GHL stashes workflow / auto-reply signals. The Lambda uses this to label the sender
+      // and to bucket the top Summary box.
+      const resolveOutboundKind = (m) => {
+        const workflowId = m.workflowId || m.meta?.workflowId || m.meta?.workflow?.id ||
+          m.meta?.sms?.workflowId || m.meta?.email?.workflowId || '';
+        const src = String(m.source || '').toLowerCase();
+        const autoReply = truthyFlag(m.autoReply) || truthyFlag(m.isAutoReply) ||
+          truthyFlag(m.meta?.autoReply) || truthyFlag(m.meta?.isAutoReply) ||
+          truthyFlag(m.meta?.sms?.autoReply) || truthyFlag(m.meta?.email?.autoReply) ||
+          src === 'ai' || src === 'auto_reply' || src === 'autoreply';
+        if (autoReply) return 'AI';
+        if (workflowId || src === 'workflow' || src === 'campaign' || src === 'bulk_actions') return 'Automation';
+        return '';
+      };
+      // IVR / voicemail detection — GHL marks these call legs in a few ways.
+      const isIvrMsg = (m) => {
+        const t = m.type ?? m.messageType;
+        if (t === 10) return true; // numeric VOICEMAIL
+        const s = String(m.status || '').toLowerCase();
+        const ct = String(m.meta?.call?.type || m.callType || '').toLowerCase();
+        return s === 'voicemail' || ct.includes('ivr') || ct.includes('voicemail');
+      };
+      // Pull attachment URLs from every place GHL hides them (meta.email/sms.attachments, files, …).
+      const pushUrl = (out, seen, u) => {
+        const url = typeof u === 'string' ? u.trim() : (u?.url || u?.link || u?.href || u?.downloadUrl || '');
+        if (!url || seen.has(url)) return;
+        seen.add(url); out.push(url);
+      };
+      const extractAttachments = (m) => {
+        const out = []; const seen = new Set();
+        const bags = [
+          m.attachments, m.files, m.meta?.attachments, m.meta?.files,
+          m.meta?.email?.attachments, m.meta?.sms?.attachments
+        ];
+        for (const bag of bags) {
+          if (!bag) continue;
+          if (Array.isArray(bag)) { for (const a of bag) pushUrl(out, seen, a); }
+          else pushUrl(out, seen, bag);
+        }
+        return out;
+      };
+
       // Per-contact worker — returns the rows it collected. Stays self-contained so we can
       // run several in parallel without sharing mutable state.
       const walkOneContact = async (contactId) => {
@@ -2673,7 +2786,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
                 contactName: _cName,
                 contactEmail: _cEmail,
                 contactPhone: _cPhone,
-                attachments: Array.isArray(m.attachments) ? m.attachments.map(a => (typeof a === 'string' ? a : (a?.url || a?.link || ''))).filter(Boolean) : [],
+                attachments: extractAttachments(m),
                 conversationId: m.conversationId || '',
                 messageId: m.id,
                 category: isCallMsg(m) ? 'call' : 'sms',
@@ -2688,6 +2801,9 @@ router.post('/estimate', authenticateSession, async (req, res) => {
                 durationSeconds: m.duration || m.meta?.call?.duration || null,
                 userId: m.userId || '',
                 senderName: _userMap[m.userId] || '',
+                // Doc-only enrichment: AI/Automation sender label + IVR/voicemail bucketing.
+                outboundKind: resolveOutboundKind(m),
+                isIvr: isIvrMsg(m),
                 _needsTranscript: callEligible
               });
             }
@@ -2730,7 +2846,7 @@ router.post('/estimate', authenticateSession, async (req, res) => {
               contactName: _cName,
               contactEmail: _cEmail,
               contactPhone: _cPhone,
-              attachments: Array.isArray(m.attachments) ? m.attachments.map(a => (typeof a === 'string' ? a : (a?.url || a?.link || ''))).filter(Boolean) : [],
+              attachments: extractAttachments(m),
               conversationId: m.conversationId || '',
               messageId: m.id,
               category: 'email',
@@ -2744,7 +2860,10 @@ router.post('/estimate', authenticateSession, async (req, res) => {
               status: m.status || '',
               durationSeconds: null,
               userId: m.userId || '',
-              senderName: _userMap[m.userId] || ''
+              senderName: _userMap[m.userId] || '',
+              // Doc-only enrichment: AI/Automation sender label (emails are never IVR).
+              outboundKind: resolveOutboundKind(m),
+              isIvr: false
             });
           }
           if (msgs.length < 100 || !r.nextPage) break;
@@ -2848,6 +2967,115 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       });
     }
 
+    // Notes (search) — location-wide notes export via POST /notes/search. Filters: text (query) and
+    // optional contact(s). Gathers upfront (count is known), persists chunked to SpecialExport, and
+    // prices exactly like the per-contact notes export ($0.018/note + volume discount).
+    if (exportType === 'notesSearch') {
+      const searchContactIds = Array.isArray(filters?.contactIds) ? filters.contactIds.filter(Boolean) : [];
+      const query = (filters?.query || '').trim() || undefined;
+
+      // Walk all pages. limit=2000 is the API max; skip-paginate until a short page.
+      const PAGE = 2000;
+      const MAX_PAGES = 500; // 1,000,000 note safety cap
+      let skip = 0, page = 0, apiTotal = null;
+      const allRows = [];
+      const nameCache = {};
+      while (page < MAX_PAGES) {
+        page++;
+        const resp = await ghlService.searchNotes(locationId, {
+          query,
+          contactIds: searchContactIds,
+          includeRelationRecords: true,
+          limit: PAGE,
+          skip
+        });
+        if (apiTotal == null) apiTotal = resp.total;
+        const batch = resp.notes || [];
+        for (const n of batch) {
+          // Derive the contact relation (first contact relation wins) for the CSV's ContactID column.
+          const rels = Array.isArray(n.relations) ? n.relations : [];
+          const contactRel = rels.find(r => r.objectKey === 'contact');
+          const contactId = contactRel?.recordId || '';
+          // Hydrated related record (when includeRelationRecords) carries name/email/phone.
+          const rec = contactRel?.record || contactRel?.recordData || {};
+          const contactName = rec.contactName || rec.name ||
+            `${rec.firstName || ''} ${rec.lastName || ''}`.trim() || nameCache[contactId] || '';
+          if (contactId && contactName) nameCache[contactId] = contactName;
+          allRows.push({
+            id: n.id,
+            contactId,
+            contactName,
+            contactEmail: rec.email || '',
+            contactPhone: rec.phone || '',
+            title: n.title || '',
+            body: n.body || '',
+            bodyText: n.bodyText || '',
+            userId: n.createdBy?.userId || n.userId || '',
+            source: n.createdBy?.source || '',
+            pinned: !!n.pinned,
+            dateAdded: n.dateAdded || '',
+            relations: rels.map(r => ({ objectKey: r.objectKey, recordId: r.recordId }))
+          });
+        }
+        if (batch.length < PAGE) break;
+        skip += PAGE;
+      }
+
+      if (allRows.length === 0) {
+        return res.status(400).json({ success: false, error: 'No notes found for the selected filters.' });
+      }
+
+      // Persist chunked (rows live in `messages`, same reader path as the other special exports).
+      const CHUNK_SIZE = 5000;
+      const totalChunks = Math.max(1, Math.ceil(allRows.length / CHUNK_SIZE));
+      const seFilters = { type: 'notesSearch', contactIds: searchContactIds, query: query || null };
+      const specialExport = await SpecialExport.create({
+        locationId,
+        filters: seFilters,
+        messages: allRows.slice(0, CHUNK_SIZE),
+        totalMessages: allRows.length,
+        totalConversations: 0,
+        chunkIndex: 0,
+        totalChunks,
+        status: 'ready'
+      });
+      if (totalChunks > 1) {
+        const chunkDocs = [];
+        for (let ci = 1; ci < totalChunks; ci++) {
+          chunkDocs.push({
+            locationId,
+            filters: seFilters,
+            messages: allRows.slice(ci * CHUNK_SIZE, (ci + 1) * CHUNK_SIZE),
+            totalMessages: allRows.length,
+            groupId: specialExport._id,
+            chunkIndex: ci,
+            totalChunks,
+            status: 'ready',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+        await SpecialExport.insertMany(chunkDocs);
+      }
+
+      // Price exactly like notes: $0.018/note on the notesAndTasks meter, with volume discount.
+      const noteTokenData = await ghlService.getValidToken(locationId);
+      const noteAccessToken = noteTokenData.accessToken || noteTokenData;
+      const noteEstimate = await billingService.calculateEstimateWithPrices(
+        { notes: allRows.length }, noteAccessToken, locationId
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          estimate: noteEstimate,
+          filters,
+          exportType,
+          specialExportId: specialExport._id
+        }
+      });
+    }
+
     // Get access token to fetch actual prices from GHL
     const tokenData = await ghlService.getValidToken(locationId);
     const accessToken = tokenData.accessToken || tokenData;
@@ -2920,7 +3148,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       });
     }
 
-    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'];
+    const validExportTypes = ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages', 'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles', 'notesSearch'];
     if (!exportType || !validExportTypes.includes(exportType)) {
       return res.status(400).json({
         success: false,
@@ -2956,8 +3184,10 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       });
     }
 
-    // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags)
-    if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags'].includes(exportType)) {
+    // Validate date range (not applicable for notes/links/templates/customFields/customValues/tags
+    // and the Commerce & More list exports which have no date filter). Appointments IS date-scoped
+    // (time-window paginated), so it stays subject to the strict range check.
+    if (!['notes', 'links', 'templates', 'customFields', 'customValues', 'tags', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles'].includes(exportType)) {
       const dateValidation = validateDateRange(filters?.startDate, filters?.endDate, ['specialTabMessages', 'callTranscriptions', 'callRecordings'].includes(exportType) ? MAX_DATE_RANGE_MS_SPECIAL_TAB : MAX_DATE_RANGE_MS);
       if (!dateValidation.valid) {
         return res.status(400).json({
@@ -2990,7 +3220,16 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         templates: 0,
         customFields: 0,
         customValues: 0,
-        tags: 0
+        tags: 0,
+        appointments: 0,
+        invoices: 0,
+        paymentOrders: 0,
+        paymentTransactions: 0,
+        paymentSubscriptions: 0,
+        surveySubmissions: 0,
+        businesses: 0,
+        products: 0,
+        mediaFiles: 0
       };
       let totalItems = 0;
 
@@ -3093,6 +3332,57 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         totalItems = result.total || 0;
         counts.tags = totalItems;
 
+      } else if (exportType === 'appointments') {
+        const result = await ghlService.getAppointments(locationId, {
+          calendarId: filters?.calendarId,
+          userId: filters?.userId,
+          groupId: filters?.groupId,
+          startTime: filters?.startDate ? new Date(filters.startDate).getTime() : undefined,
+          endTime: filters?.endDate ? new Date(filters.endDate).getTime() : undefined
+        });
+        totalItems = result.total || 0;
+        counts.appointments = totalItems;
+
+      } else if (exportType === 'invoices') {
+        const result = await ghlService.getInvoices(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.invoices = totalItems;
+
+      } else if (exportType === 'paymentOrders') {
+        const result = await ghlService.getPaymentOrders(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.paymentOrders = totalItems;
+
+      } else if (exportType === 'paymentTransactions') {
+        const result = await ghlService.getPaymentTransactions(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.paymentTransactions = totalItems;
+
+      } else if (exportType === 'paymentSubscriptions') {
+        const result = await ghlService.getPaymentSubscriptions(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.paymentSubscriptions = totalItems;
+
+      } else if (exportType === 'surveySubmissions') {
+        const result = await ghlService.getSurveySubmissions(locationId, { page: 1, limit: 1 });
+        totalItems = result.total || 0;
+        counts.surveySubmissions = totalItems;
+
+      } else if (exportType === 'businesses') {
+        const result = await ghlService.getBusinesses(locationId);
+        totalItems = result.total || 0;
+        counts.businesses = totalItems;
+
+      } else if (exportType === 'products') {
+        const result = await ghlService.getProducts(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.products = totalItems;
+
+      } else if (exportType === 'mediaFiles') {
+        const result = await ghlService.getMediaFiles(locationId, { limit: 1, offset: 0 });
+        totalItems = result.total || 0;
+        counts.mediaFiles = totalItems;
+
       } else if (exportType === 'specialTabMessages') {
         // LiveChat: use estimatedTotal from frontend (already counted during estimate)
         totalItems = filters?.estimatedTotal || 0;
@@ -3150,6 +3440,12 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         // Flat $0.05-per-record billing. estimatedTotal was set at /estimate from allRows.length.
         totalItems = filters?.estimatedTotal || 0;
         counts.contactBundleDocTotal = totalItems;
+
+      } else if (exportType === 'notesSearch') {
+        // Notes (search): notes were gathered + chunked during /estimate. Bill exactly like notes
+        // ($0.018/note + volume discount) via counts.notes; do not re-walk GHL.
+        totalItems = filters?.estimatedTotal || 0;
+        counts.notes = totalItems;
 
       } else {
         // Use estimatedTotal from the estimate step if available (avoids GHL returning a different count)
@@ -3444,6 +3740,9 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       contactName: filters?.contactName || null,
       // Form submission-specific filters
       formId: filters?.formId || null,
+      // Appointments-specific filters (calendar selection + optional user/group)
+      calendarId: filters?.calendarId || null,
+      groupId: filters?.groupId || null,
       // Template-specific filters.
       // - Array (specialTabMessages "All" → 7 activity types) → comma-joined string
       // - String (single template type, or single activity type) → stored as-is
@@ -3477,12 +3776,19 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
       specialTabType: exportType
     };
 
+    // Contact Bundle (Google Doc) outputs a document, not CSV/JSON. Its format picks which
+    // artifact(s) to build: 'pdf' | 'html' | 'both' (default 'both'). Everything else stays csv/json.
+    let resolvedFormat = format || 'csv';
+    if (exportType === 'contactBundleDoc') {
+      resolvedFormat = ['pdf', 'html', 'both'].includes(format) ? format : 'both';
+    }
+
     const exportJob = await ExportJob.create({
       locationId,
       companyId,
       billingTransactionId: transaction._id,
       exportType,
-      format: format || 'csv',
+      format: resolvedFormat,
       filters: jobFilters,
       totalItems,
       status: 'pending',
@@ -3497,7 +3803,7 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
 
     // Step 9a: Link the SpecialExport to this job.
     // For specialTabMessages and opportunityStageHistory it was created during /estimate; for callTranscriptions it was created in Step 7a (post-charge).
-    if (['specialTabMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'].includes(exportType) && filters?.specialExportId) {
+    if (['specialTabMessages', 'callTranscriptions', 'callRecordings', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages', 'notesSearch'].includes(exportType) && filters?.specialExportId) {
       try {
         await SpecialExport.findByIdAndUpdate(filters.specialExportId, {
           exportJobId: exportJob._id
@@ -3834,9 +4140,16 @@ router.get('/pricing', async (req, res) => {
   const callRecordingsEnabled = locationId
     ? (callRecordingsLocationIds.includes('*') || callRecordingsLocationIds.includes(locationId))
     : false;
+  // Contact Bundle (Google Doc) is now GENERALLY AVAILABLE to every location. The old
+  // contactBundleDocLocationIds allow-list is kept only as an explicit DISABLE switch: if the key
+  // exists and holds values, and this location is NOT in it (and no '*'), the feature is hidden —
+  // otherwise it is on for everyone. The per-tab kill-switch (disabledTab:contactBundleDoc) still
+  // applies on top via `disabledTabs`.
   const contactBundleDocEnabled = locationId
-    ? (contactBundleDocLocationIds.includes('*') || contactBundleDocLocationIds.includes(locationId))
-    : false;
+    ? (contactBundleDocLocationIds.length === 0 ||
+       contactBundleDocLocationIds.includes('*') ||
+       contactBundleDocLocationIds.includes(locationId))
+    : true;
 
   // Per-tab kill-switch. One AppConfig doc per tab: key `disabledTab:<tab>`, whose `values`
   // holds a mix of locationIds AND companyIds. A tab is disabled for this location if its
@@ -3847,8 +4160,11 @@ router.get('/pricing', async (req, res) => {
     'import', 'export',
     'messages', 'specialTabMessages', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'callTranscriptions', 'callRecordings',
     'contacts', 'opportunities', 'opportunityStageHistory', 'formSubmissions',
-    'notes', 'tasks', 'templates', 'links', 'callLogs', 'customFields', 'customValues', 'tags',
-    'importContacts', 'importNotes', 'importCustomFields', 'importCustomValues'
+    'notes', 'notesSearch', 'tasks', 'templates', 'links', 'callLogs', 'customFields', 'customValues', 'tags',
+    'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions',
+    'surveySubmissions', 'businesses', 'products', 'mediaFiles',
+    'importContacts', 'importNotes', 'importCustomFields', 'importCustomValues',
+    'importOpportunities', 'importTasks'
   ];
   let disabledTabs = [];
   if (locationId) {
@@ -3988,6 +4304,40 @@ router.get('/forms', authenticateSession, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get forms'
+    });
+  }
+});
+
+/**
+ * @route GET /api/billing/calendars
+ * @desc Get calendars for a location (populates the appointments calendar dropdown)
+ */
+router.get('/calendars', authenticateSession, async (req, res) => {
+  try {
+    const { locationId } = req.query;
+
+    if (!locationId) {
+      return res.status(400).json({
+        success: false,
+        error: 'locationId is required'
+      });
+    }
+
+    const result = await ghlService.getCalendars(locationId);
+
+    res.json({
+      success: true,
+      data: {
+        calendars: result.calendars || []
+      }
+    });
+
+  } catch (error) {
+    logError('Get calendars error', error, { locationId: req.query?.locationId });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get calendars'
     });
   }
 });

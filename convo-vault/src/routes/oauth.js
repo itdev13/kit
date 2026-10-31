@@ -31,6 +31,7 @@ router.get('/authorize', (req, res) => {
     "charges.write",
     "oauth.readonly",
     "opportunities.readonly",
+    "opportunities.write",
     "forms.readonly",
     "links.readonly",
     "locations/customValues.readonly",
@@ -43,6 +44,17 @@ router.get('/authorize', (req, res) => {
     "users.readonly",
     "emails/builder.readonly",
     "marketplace-installer-details.readonly",
+    "calendars.readonly",
+    "calendars/events.readonly",
+    "invoices.readonly",
+    "payments/orders.readonly",
+    "payments/transactions.readonly",
+    "payments/subscriptions.readonly",
+    "surveys.readonly",
+    "businesses.readonly",
+    "products.readonly",
+    "medias.readonly",
+    "notes.readonly",
   ].join(' ');
 
   // Encode referral info in state parameter if provided

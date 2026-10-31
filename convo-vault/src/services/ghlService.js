@@ -1356,6 +1356,52 @@ class GHLService {
   }
 
   /**
+   * Search notes across the whole sub-account.
+   * POST /notes/search  (scope: notes.readonly)
+   * Location-wide — no contact required. Supports text search (query), creator/source filters,
+   * date range, and up to 200 contact relations. Paginated via skip/limit (limit max 2000).
+   *
+   * @param {string} locationId
+   * @param {object} opts  { query, sources, createdByUserId, contactIds[], limit, skip, sortBy,
+   *                         sortOrder, dateAddedGte, dateAddedLte, includeRelationRecords }
+   * @returns {{ notes: any[], total: number }}
+   */
+  async searchNotes(locationId, opts = {}) {
+    try {
+      const body = {
+        locationId,
+        limit: Math.min(opts.limit || 100, 2000),
+        skip: opts.skip || 0,
+        sortBy: opts.sortBy || 'dateAdded',
+        sortOrder: opts.sortOrder || 'desc',
+        count: true
+      };
+      if (opts.query) body.query = opts.query;
+      if (Array.isArray(opts.sources) && opts.sources.length) body.sources = opts.sources;
+      if (opts.createdByUserId) body.createdByUserId = opts.createdByUserId;
+      if (Array.isArray(opts.contactIds) && opts.contactIds.length) {
+        // Up to 200 contact relations per call.
+        body.relations = opts.contactIds.slice(0, 200).map(id => ({ objectKey: 'contact', recordId: id }));
+      }
+      if (opts.includeRelationRecords) body.includeRelationRecords = true;
+      if (opts.dateAddedGte || opts.dateAddedLte) {
+        body.dateAdded = {};
+        if (opts.dateAddedGte) body.dateAdded.gte = opts.dateAddedGte;
+        if (opts.dateAddedLte) body.dateAdded.lte = opts.dateAddedLte;
+      }
+
+      const response = await this.apiRequest('POST', '/notes/search', locationId, body);
+      return {
+        notes: response.notes || [],
+        total: typeof response.total === 'number' ? response.total : (response.notes?.length || 0)
+      };
+    } catch (error) {
+      logger.error('searchNotes failed:', { locationId, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
    * Create a note for a contact
    * POST /contacts/:contactId/notes
    * https://marketplace.gohighlevel.com/docs/ghl/contacts/create-note
@@ -1783,6 +1829,277 @@ class GHLService {
     } catch (error) {
       logger.error('Get voice AI agents failed:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Get calendars for a location (used to populate the appointments calendar dropdown)
+   * GET /calendars/?locationId=
+   */
+  async getCalendars(locationId) {
+    try {
+      const response = await this.apiRequest(
+        'GET',
+        '/calendars/',
+        locationId,
+        null,
+        { locationId }
+      );
+      return {
+        calendars: response.calendars || []
+      };
+    } catch (error) {
+      logger.error('Get calendars failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get calendar events (appointments) for a location + calendar within a time window.
+   * GET /calendars/events?locationId=&calendarId=&startTime=ms&endTime=ms
+   */
+  async getAppointments(locationId, options = {}) {
+    try {
+      const params = { locationId };
+      if (options.calendarId) params.calendarId = options.calendarId;
+      if (options.userId) params.userId = options.userId;
+      if (options.groupId) params.groupId = options.groupId;
+      if (options.startTime) params.startTime = options.startTime;
+      if (options.endTime) params.endTime = options.endTime;
+
+      const response = await this.apiRequest('GET', '/calendars/events', locationId, null, params);
+      const events = response.events || [];
+      return {
+        events,
+        total: events.length
+      };
+    } catch (error) {
+      logger.error('Get appointments failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoices for a location
+   * GET /invoices/?altId={loc}&altType=location&limit=&offset=
+   */
+  async getInvoices(locationId, options = {}) {
+    try {
+      const params = {
+        altId: locationId,
+        altType: 'location',
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/invoices/', locationId, null, params);
+      const invoices = response.invoices || [];
+      return {
+        invoices,
+        total: response.total || invoices.length || 0
+      };
+    } catch (error) {
+      logger.error('Get invoices failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get payment orders for a location
+   * GET /payments/orders?altId={loc}&locationId={loc}&limit=&offset=
+   */
+  async getPaymentOrders(locationId, options = {}) {
+    try {
+      const params = {
+        altId: locationId,
+        locationId,
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/payments/orders', locationId, null, params);
+      const data = response.data || [];
+      return {
+        orders: data,
+        total: response.totalCount || data.length || 0
+      };
+    } catch (error) {
+      logger.error('Get payment orders failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get payment transactions for a location
+   * GET /payments/transactions?altId={loc}&altType=location&limit=&offset=
+   */
+  async getPaymentTransactions(locationId, options = {}) {
+    try {
+      const params = {
+        altId: locationId,
+        altType: 'location',
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/payments/transactions', locationId, null, params);
+      const data = response.data || [];
+      return {
+        transactions: data,
+        total: response.totalCount || data.length || 0
+      };
+    } catch (error) {
+      logger.error('Get payment transactions failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get payment subscriptions for a location
+   * GET /payments/subscriptions?altId={loc}&altType=location&limit=&offset=
+   */
+  async getPaymentSubscriptions(locationId, options = {}) {
+    try {
+      const params = {
+        altId: locationId,
+        altType: 'location',
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/payments/subscriptions', locationId, null, params);
+      const data = response.data || [];
+      return {
+        subscriptions: data,
+        total: response.totalCount || data.length || 0
+      };
+    } catch (error) {
+      logger.error('Get payment subscriptions failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get survey submissions for a location
+   * GET /surveys/submissions?locationId=&page=&limit=
+   */
+  async getSurveySubmissions(locationId, options = {}) {
+    try {
+      const params = {
+        locationId,
+        page: options.page || 1,
+        limit: options.limit || 100
+      };
+      const response = await this.apiRequest('GET', '/surveys/submissions', locationId, null, params);
+      return {
+        submissions: response.submissions || [],
+        total: response.meta?.total || 0
+      };
+    } catch (error) {
+      logger.error('Get survey submissions failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get businesses for a location (single-shot, no pagination)
+   * GET /businesses/?locationId=
+   */
+  async getBusinesses(locationId) {
+    try {
+      const response = await this.apiRequest('GET', '/businesses/', locationId, null, { locationId });
+      const businesses = response.businesses || [];
+      return {
+        businesses,
+        total: businesses.length
+      };
+    } catch (error) {
+      logger.error('Get businesses failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get products for a location
+   * GET /products/?locationId=&limit=&offset=
+   */
+  async getProducts(locationId, options = {}) {
+    try {
+      const params = {
+        locationId,
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/products/', locationId, null, params);
+      const products = response.products || [];
+      return {
+        products,
+        total: response.total || products.length || 0
+      };
+    } catch (error) {
+      logger.error('Get products failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get media files for a location
+   * GET /medias/files?locationId=&limit=&offset=
+   */
+  async getMediaFiles(locationId, options = {}) {
+    try {
+      const params = {
+        locationId,
+        limit: options.limit || 100,
+        offset: options.offset || 0
+      };
+      const response = await this.apiRequest('GET', '/medias/files', locationId, null, params);
+      const files = response.files || [];
+      return {
+        files,
+        total: response.total || files.length || 0
+      };
+    } catch (error) {
+      logger.error('Get media files failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an opportunity
+   * POST /opportunities/
+   */
+  async createOpportunity(locationId, opportunityData) {
+    try {
+      const requestBody = { ...opportunityData, locationId };
+      const response = await this.apiRequest('POST', '/opportunities/', locationId, requestBody);
+      return response.opportunity || response;
+    } catch (error) {
+      logger.error('createOpportunity failed:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      throw new Error(`Failed to create opportunity: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Create a task for a contact
+   * POST /contacts/{contactId}/tasks
+   */
+  async createContactTask(locationId, contactId, taskData) {
+    try {
+      const response = await this.apiRequest(
+        'POST',
+        `/contacts/${contactId}/tasks`,
+        locationId,
+        taskData
+      );
+      return response.task || response;
+    } catch (error) {
+      logger.error('createContactTask failed:', {
+        contactId,
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message
+      });
+      throw new Error(`Failed to create task: ${error.response?.data?.message || error.message}`);
     }
   }
 }

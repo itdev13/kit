@@ -27,14 +27,14 @@ const exportJobSchema = new mongoose.Schema({
   // Export type: conversations, messages, notes, or tasks
   exportType: {
     type: String,
-    enum: ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages'],
+    enum: ['conversations', 'messages', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'specialTabMessages', 'callTranscriptions', 'callRecordings', 'contacts', 'customFields', 'customValues', 'tags', 'opportunityStageHistory', 'contactBundle', 'contactBundleDoc', 'messagesByTag', 'groupMessages', 'internalMessages', 'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles', 'notesSearch'],
     required: true
   },
 
-  // Output format
+  // Output format. csv/json for data exports; pdf/html/both for the Contact Bundle (Google Doc).
   format: {
     type: String,
-    enum: ['csv', 'json'],
+    enum: ['csv', 'json', 'pdf', 'html', 'both'],
     default: 'csv'
   },
 
@@ -69,6 +69,9 @@ const exportJobSchema = new mongoose.Schema({
     contactName: { type: String, default: null },
     // Form submission-specific filters
     formId: { type: String, default: null },
+    // Appointments-specific filter (calendar selection required)
+    calendarId: { type: String, default: null },
+    groupId: { type: String, default: null },
     // Template-specific filters
     templateType: { type: String, default: null },
     // Call log-specific filters

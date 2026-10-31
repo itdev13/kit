@@ -6,6 +6,7 @@ import MessagesTab from './tabs/MessagesTab';
 import SupportTab from './tabs/SupportTab';
 import ExportTab from './tabs/ExportTab';
 import NotesTab from './tabs/NotesTab';
+import NotesSearchTab from './tabs/NotesSearchTab';
 import TasksTab from './tabs/TasksTab';
 import OpportunitiesTab from './tabs/OpportunitiesTab';
 import FormSubmissionsTab from './tabs/FormSubmissionsTab';
@@ -30,6 +31,17 @@ import TagsTab from './tabs/TagsTab';
 import ImportCustomFieldsTab from './tabs/ImportCustomFieldsTab';
 import ImportCustomValuesTab from './tabs/ImportCustomValuesTab';
 import OpportunityStageHistoryTab from './tabs/OpportunityStageHistoryTab';
+import AppointmentsTab from './tabs/AppointmentsTab';
+import InvoicesTab from './tabs/InvoicesTab';
+import PaymentOrdersTab from './tabs/PaymentOrdersTab';
+import PaymentTransactionsTab from './tabs/PaymentTransactionsTab';
+import PaymentSubscriptionsTab from './tabs/PaymentSubscriptionsTab';
+import SurveySubmissionsTab from './tabs/SurveySubmissionsTab';
+import BusinessesTab from './tabs/BusinessesTab';
+import ProductsTab from './tabs/ProductsTab';
+import MediaFilesTab from './tabs/MediaFilesTab';
+import ImportOpportunitiesTab from './tabs/ImportOpportunitiesTab';
+import ImportTasksTab from './tabs/ImportTasksTab';
 import { MESSAGE_PRICE_TIERS } from '../constants/pricing';
 
 // Marketing tiers for the dashboard price-drop banner: every message tier below the base rate,
@@ -110,7 +122,8 @@ export default function Dashboard() {
     {
       label: 'Content',
       items: [
-        { id: 'notes', label: 'Notes', icon: '📝' },
+        { id: 'notesSearch', label: 'Notes', icon: '🗒️' },
+        { id: 'notes', label: 'Notes By Tag', icon: '📝' },
         { id: 'tasks', label: 'Tasks', icon: '✅' },
         { id: 'templates', label: 'Templates', icon: '📄' },
         { id: 'links', label: 'Links', icon: '🔗' },
@@ -118,6 +131,20 @@ export default function Dashboard() {
         { id: 'customFields', label: 'Custom Fields', icon: '🧩' },
         { id: 'customValues', label: 'Custom Values', icon: '🔖' },
         { id: 'tags', label: 'Tags', icon: '🏷️' },
+      ]
+    },
+    {
+      label: 'Commerce & More',
+      items: [
+        { id: 'appointments', label: 'Appointments', icon: '📅' },
+        { id: 'invoices', label: 'Invoices', icon: '🧾' },
+        { id: 'paymentOrders', label: 'Payment Orders', icon: '🛒' },
+        { id: 'paymentTransactions', label: 'Payment Transactions', icon: '💳' },
+        { id: 'paymentSubscriptions', label: 'Subscriptions', icon: '🔁' },
+        { id: 'surveySubmissions', label: 'Surveys', icon: '📝' },
+        { id: 'businesses', label: 'Businesses', icon: '🏢' },
+        { id: 'products', label: 'Products', icon: '📦' },
+        { id: 'mediaFiles', label: 'Media Files', icon: '🖼️' },
       ]
     },
     ...(customChargeEnabled ? [{ label: 'Billing', items: [{ id: 'customCharge', label: 'Charge', icon: '💳' }] }] : []),
@@ -130,6 +157,8 @@ export default function Dashboard() {
       items: [
         { id: 'importContacts', label: 'Contacts', icon: '👥' },
         { id: 'importNotes', label: 'Notes', icon: '📥' },
+        { id: 'importOpportunities', label: 'Opportunities', icon: '💰' },
+        { id: 'importTasks', label: 'Tasks', icon: '✅' },
       ]
     },
     {
@@ -582,6 +611,7 @@ export default function Dashboard() {
                 {activeTab === 'contacts' && <ExportContactsTab />}
                 {activeTab === 'opportunities' && <OpportunitiesTab />}
                 {activeTab === 'formSubmissions' && <FormSubmissionsTab />}
+                {activeTab === 'notesSearch' && <NotesSearchTab />}
                 {activeTab === 'notes' && <NotesTab />}
                 {activeTab === 'tasks' && <TasksTab />}
                 {activeTab === 'templates' && <TemplatesTab />}
@@ -590,6 +620,15 @@ export default function Dashboard() {
                 {activeTab === 'customFields' && <CustomFieldsTab />}
                 {activeTab === 'customValues' && <CustomValuesTab />}
                 {activeTab === 'tags' && <TagsTab />}
+                {activeTab === 'appointments' && <AppointmentsTab />}
+                {activeTab === 'invoices' && <InvoicesTab />}
+                {activeTab === 'paymentOrders' && <PaymentOrdersTab />}
+                {activeTab === 'paymentTransactions' && <PaymentTransactionsTab />}
+                {activeTab === 'paymentSubscriptions' && <PaymentSubscriptionsTab />}
+                {activeTab === 'surveySubmissions' && <SurveySubmissionsTab />}
+                {activeTab === 'businesses' && <BusinessesTab />}
+                {activeTab === 'products' && <ProductsTab />}
+                {activeTab === 'mediaFiles' && <MediaFilesTab />}
                 {activeTab === 'opportunityStageHistory' && features?.opportunityStageHistory && <OpportunityStageHistoryTab />}
                 {activeTab === 'callTranscriptions' && callTranscriptionsEnabled && <CallTranscriptionsTab />}
                 {activeTab === 'callRecordings' && <CallRecordingsTab />}
@@ -599,6 +638,8 @@ export default function Dashboard() {
                 {activeTab === 'customCharge' && customChargeEnabled && <CustomChargeTab />}
                 {activeTab === 'importContacts' && <ImportContactsTab />}
                 {activeTab === 'importNotes' && <ImportNotesTab />}
+                {activeTab === 'importOpportunities' && <ImportOpportunitiesTab />}
+                {activeTab === 'importTasks' && <ImportTasksTab />}
                 {activeTab === 'importCustomFields' && <ImportCustomFieldsTab />}
                 {activeTab === 'importCustomValues' && <ImportCustomValuesTab />}
                 {activeTab === 'exports' && <ExportTab />}

@@ -30,6 +30,9 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
   const [processing, setProcessing] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
 
+  // Doc output format: 'both' (PDF + HTML zip) | 'pdf' | 'html'. Only used by the Google Doc sub-tab.
+  const [docFormat, setDocFormat] = useState('both');
+
   // Contact picker — at least one required.
   const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [contactOptions, setContactOptions] = useState([]);
@@ -105,11 +108,13 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
     return () => clearInterval(pollInterval);
   }, [activeJob?.jobId, activeJob?.status, location?.id]);
 
-  const buildExportFilters = () => ({ contactIds: selectedContactIds });
+  // Doc is single-contact; the default bundle allows multiple. Trim the selection for the Doc tab.
+  const effectiveContactIds = isDoc ? selectedContactIds.slice(0, 1) : selectedContactIds;
+  const buildExportFilters = () => ({ contactIds: effectiveContactIds });
 
   const handleGetEstimate = async () => {
-    if (selectedContactIds.length === 0) {
-      antMessage.warning('Please select at least one contact to export.');
+    if (effectiveContactIds.length === 0) {
+      antMessage.warning(isDoc ? 'Please select a contact to export.' : 'Please select at least one contact to export.');
       return;
     }
     setExportModalVisible(true);
@@ -140,10 +145,10 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
         estimatedTotal: estimate?.itemCounts?.total || undefined,
         specialExportId: specialExportId || undefined
       };
-      // Google Doc variant always outputs .docx regardless of the modal's CSV/JSON selection.
-      // We still pass a schema-valid format ('csv'); the Lambda forces the .docx extension and
-      // binary output for contactBundleDoc, ignoring job.format.
-      const response = await billingAPI.chargeAndExport(location.id, activeExportType, format, filters, notificationEmail);
+      // Doc variant: the output format is chosen here (both | pdf | html), not in the modal.
+      // Default bundle keeps the modal's csv/json selection.
+      const chargeFormat = isDoc ? docFormat : format;
+      const response = await billingAPI.chargeAndExport(location.id, activeExportType, chargeFormat, filters, notificationEmail);
       if (response.success) {
         setActiveJob({
           jobId: response.data.jobId,
@@ -187,7 +192,7 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
           <h2 className="text-2xl font-bold text-gray-900">Contact Bundle</h2>
           <p className="text-sm text-gray-500 mt-1">
             {isDoc
-              ? 'Export every message, email, and call transcription for selected contacts — one PDF styled like your GHL conversation view.'
+              ? 'Export every message, email, and call transcription for one contact — a document styled like your GHL conversation view. Choose PDF, HTML, or both.'
               : 'Export every message, email, and call transcription for selected contacts — one CSV, sorted by time.'}
           </p>
         </div>
@@ -204,7 +209,13 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
             <button
               key={t.id}
               type="button"
-              onClick={() => { setSubTab(t.id); setEstimate(null); setEstimateError(null); }}
+              onClick={() => {
+                setSubTab(t.id);
+                setEstimate(null);
+                setEstimateError(null);
+                // Doc is single-contact — trim any multi-selection down to one when switching in.
+                if (t.id === 'doc') setSelectedContactIds(prev => prev.slice(0, 1));
+              }}
               className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
                 subTab === t.id
                   ? 'border-green-600 text-green-700'
@@ -233,36 +244,62 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Contacts <span className="text-red-500">*</span>
+            {isDoc ? 'Contact' : 'Contacts'} <span className="text-red-500">*</span>
           </label>
           <Select
-            mode="multiple"
+            // Google Doc is a single-contact export; the default bundle allows multiple.
+            mode={isDoc ? undefined : 'multiple'}
             allowClear
             showSearch
-            value={selectedContactIds}
-            onChange={setSelectedContactIds}
+            value={isDoc ? (selectedContactIds[0] ?? undefined) : selectedContactIds}
+            onChange={(val) => setSelectedContactIds(isDoc ? (val ? [val] : []) : val)}
             onSearch={handleContactSearch}
             optionFilterProp="label"
             loading={contactsLoading}
-            placeholder="Search and select one or more contacts..."
+            placeholder={isDoc ? 'Search and select one contact...' : 'Search and select one or more contacts...'}
             options={contactOptions}
             style={{ width: '100%' }}
             maxTagCount="responsive"
             notFoundContent={contactsLoading ? 'Searching…' : 'No contacts found — try typing a name or email'}
           />
           <p className="text-xs text-gray-500 mt-2">
-            {selectedContactIds.length > 0
-              ? <><strong>{selectedContactIds.length}</strong> contact{selectedContactIds.length === 1 ? '' : 's'} selected.</>
-              : 'Required: pick at least one contact.'}
+            {effectiveContactIds.length > 0
+              ? (isDoc
+                  ? <><strong>1</strong> contact selected.</>
+                  : <><strong>{effectiveContactIds.length}</strong> contact{effectiveContactIds.length === 1 ? '' : 's'} selected.</>)
+              : (isDoc ? 'Required: pick one contact.' : 'Required: pick at least one contact.')}
           </p>
         </div>
+
+        {/* Doc-only: output format + in-app sample preview. */}
+        {isDoc && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Output format</label>
+            <Select
+              value={docFormat}
+              onChange={setDocFormat}
+              style={{ width: '100%', maxWidth: 360 }}
+              options={[
+                { value: 'both', label: 'Both — PDF + HTML (a .zip with both files)' },
+                { value: 'pdf', label: 'Only PDF' },
+                { value: 'html', label: 'Only HTML' },
+              ]}
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Not sure which to pick? Preview a sample:{' '}
+              <a href="/sample-contact-bundle.pdf" target="_blank" rel="noopener noreferrer" className="text-green-700 font-medium hover:underline">View sample PDF</a>
+              {' · '}
+              <a href="/sample-contact-bundle.html" target="_blank" rel="noopener noreferrer" className="text-green-700 font-medium hover:underline">View sample HTML</a>
+            </p>
+          </div>
+        )}
 
         <Button
           type="primary"
           size="large"
           onClick={handleGetEstimate}
           loading={estimating}
-          disabled={!location?.id || selectedContactIds.length === 0}
+          disabled={!location?.id || effectiveContactIds.length === 0}
           className="bg-green-600 hover:bg-green-700 border-green-600"
         >
           Get Estimate & Export
@@ -274,8 +311,9 @@ export default function ContactBundleTab({ contactBundleDocEnabled = false }) {
             fetch emails via bulk export, and pull a transcript for every eligible call.
             {isDoc ? (
               <>
-                {' '}Output is a <strong>PDF</strong> laid out like your GHL conversation view — chat bubbles grouped
-                by contact and conversation. Pricing: <strong>$0.08 per record</strong> — no volume discount.
+                {' '}Output is laid out like your GHL conversation view — chat bubbles, a channel summary, and call
+                transcripts. Pick <strong>PDF</strong>, <strong>HTML</strong>, or <strong>both</strong> (delivered as a .zip).
+                Pricing: <strong>$0.08 per record</strong> — no volume discount.
               </>
             ) : (
               <>

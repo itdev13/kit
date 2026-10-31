@@ -19,7 +19,7 @@ const billingTransactionSchema = new mongoose.Schema({
   // Transaction type
   type: {
     type: String,
-    enum: ['export_conversations', 'export_messages', 'export_notes', 'export_tasks', 'export_opportunities', 'export_formSubmissions', 'export_links', 'export_socialPosts', 'export_callLogs', 'export_templates', 'export_specialTabMessages', 'export_callTranscriptions', 'export_callRecordings', 'export_contacts', 'export_customFields', 'export_customValues', 'export_tags', 'export_opportunityStageHistory', 'export_contactBundle', 'export_contactBundleDoc', 'export_messagesByTag', 'export_groupMessages', 'export_internalMessages', 'custom_charge', 'import_notes', 'import_contacts', 'import_custom_fields', 'import_custom_values'],
+    enum: ['export_conversations', 'export_messages', 'export_notes', 'export_tasks', 'export_opportunities', 'export_formSubmissions', 'export_links', 'export_socialPosts', 'export_callLogs', 'export_templates', 'export_specialTabMessages', 'export_callTranscriptions', 'export_callRecordings', 'export_contacts', 'export_customFields', 'export_customValues', 'export_tags', 'export_opportunityStageHistory', 'export_contactBundle', 'export_contactBundleDoc', 'export_messagesByTag', 'export_groupMessages', 'export_internalMessages', 'export_appointments', 'export_invoices', 'export_paymentOrders', 'export_paymentTransactions', 'export_paymentSubscriptions', 'export_surveySubmissions', 'export_businesses', 'export_products', 'export_mediaFiles', 'export_notesSearch', 'custom_charge', 'import_notes', 'import_contacts', 'import_custom_fields', 'import_custom_values', 'import_importOpportunities', 'import_importTasks'],
     required: true
   },
 
@@ -50,6 +50,15 @@ const billingTransactionSchema = new mongoose.Schema({
     socialPosts: { type: Number, default: 0 },
     callLogs: { type: Number, default: 0 },
     templates: { type: Number, default: 0 },
+    appointments: { type: Number, default: 0 },
+    invoices: { type: Number, default: 0 },
+    paymentOrders: { type: Number, default: 0 },
+    paymentTransactions: { type: Number, default: 0 },
+    paymentSubscriptions: { type: Number, default: 0 },
+    surveySubmissions: { type: Number, default: 0 },
+    businesses: { type: Number, default: 0 },
+    products: { type: Number, default: 0 },
+    mediaFiles: { type: Number, default: 0 },
     total: { type: Number, default: 0 }
   },
 

@@ -70,6 +70,22 @@ export const importAPI = {
   },
 
   /**
+   * Import opportunities from parsed CSV rows
+   */
+  importOpportunities: async (locationId, rows, fileName) => {
+    const response = await apiClient.post('/import/opportunities', { locationId, rows, fileName });
+    return response;
+  },
+
+  /**
+   * Import tasks from parsed CSV rows
+   */
+  importTasks: async (locationId, rows, fileName) => {
+    const response = await apiClient.post('/import/tasks', { locationId, rows, fileName });
+    return response;
+  },
+
+  /**
    * Download CSV template
    */
   downloadTemplate: async () => {

@@ -25,7 +25,15 @@ const METER_IDS = {
   customFields: '69864aed1265653fdd7c0620',
   customValues: '69864aed1265653fdd7c0620',
   tags: '69864aed1265653fdd7c0620',
-  opportunityStageHistory: '69864aed1265653fdd7c0620'
+  opportunityStageHistory: '69864aed1265653fdd7c0620',
+  appointments: '69864aed1265653fdd7c0620',
+  invoices: '69864aed1265653fdd7c0620',
+  paymentOrders: '69864aed1265653fdd7c0620',
+  paymentTransactions: '69864aed1265653fdd7c0620',
+  paymentSubscriptions: '69864aed1265653fdd7c0620',
+  surveySubmissions: '69864aed1265653fdd7c0620',
+  products: '69864aed1265653fdd7c0620',
+  mediaFiles: '69864aed1265653fdd7c0620'
 };
 
 // Base credit price used by all default unit prices. Custom per-location credit prices override this.
@@ -84,7 +92,18 @@ const DEFAULT_UNIT_PRICES = {
   importContacts: 0.018,
   importCustomFields: 0.018,
   importCustomValues: 0.018,
-  contacts: 0.018
+  importOpportunities: 0.018,
+  importTasks: 0.018,
+  contacts: 0.018,
+  appointments: 0.018,
+  invoices: 0.018,
+  paymentOrders: 0.018,
+  paymentTransactions: 0.018,
+  paymentSubscriptions: 0.018,
+  surveySubmissions: 0.018,
+  businesses: 0.018,
+  products: 0.018,
+  mediaFiles: 0.018
 };
 
 
@@ -205,6 +224,15 @@ class BillingService {
       customFields = 0,
       customValues = 0,
       tags = 0,
+      appointments = 0,
+      invoices = 0,
+      paymentOrders = 0,
+      paymentTransactions = 0,
+      paymentSubscriptions = 0,
+      surveySubmissions = 0,
+      businesses = 0,
+      products = 0,
+      mediaFiles = 0,
       opportunityStageHistory = 0,
       // OSH sub-counts: passed in for transparency on the customer-facing breakdown.
       // The billable total is still `opportunityStageHistory` (= opps + msgs from the caller),
@@ -239,6 +267,16 @@ class BillingService {
     const customFieldsCost = customFields * (unitPrices.customFields || DEFAULT_UNIT_PRICES.customFields);
     const customValuesCost = customValues * (unitPrices.customValues || DEFAULT_UNIT_PRICES.customValues);
     const tagsCost = tags * (unitPrices.tags || DEFAULT_UNIT_PRICES.tags);
+    // Commerce & More exports — all flat $0.018/item, discountable like links.
+    const appointmentsCost = appointments * (unitPrices.appointments || DEFAULT_UNIT_PRICES.appointments);
+    const invoicesCost = invoices * (unitPrices.invoices || DEFAULT_UNIT_PRICES.invoices);
+    const paymentOrdersCost = paymentOrders * (unitPrices.paymentOrders || DEFAULT_UNIT_PRICES.paymentOrders);
+    const paymentTransactionsCost = paymentTransactions * (unitPrices.paymentTransactions || DEFAULT_UNIT_PRICES.paymentTransactions);
+    const paymentSubscriptionsCost = paymentSubscriptions * (unitPrices.paymentSubscriptions || DEFAULT_UNIT_PRICES.paymentSubscriptions);
+    const surveySubmissionsCost = surveySubmissions * (unitPrices.surveySubmissions || DEFAULT_UNIT_PRICES.surveySubmissions);
+    const businessesCost = businesses * (unitPrices.businesses || DEFAULT_UNIT_PRICES.businesses);
+    const productsCost = products * (unitPrices.products || DEFAULT_UNIT_PRICES.products);
+    const mediaFilesCost = mediaFiles * (unitPrices.mediaFiles || DEFAULT_UNIT_PRICES.mediaFiles);
     // Opportunity Stage History: flat $0.10 per row, no volume discount tier (custom build, excluded from totals below).
     const opportunityStagePrice = unitPrices.opportunityStageHistory || DEFAULT_UNIT_PRICES.opportunityStageHistory;
     const opportunityStageCost = opportunityStageHistory * opportunityStagePrice;
@@ -254,11 +292,14 @@ class BillingService {
     const messagesCost = textMessagesCost + emailCost;
 
     // Percentage volume discount applies only to flat-rate items.
-    const discountableItems = conversations + opportunities + formSubmissions + links + socialPosts + callLogs + templates + contacts + customFields + customValues + tags + notes + tasks;
-    const discountableAmount = conversationsCost + opportunitiesCost + formSubmissionsCost + linksCost + socialPostsCost + callLogsCost + templatesCost + contactsCost + customFieldsCost + customValuesCost + tagsCost + notesCost + tasksCost;
+    const commerceItems = appointments + invoices + paymentOrders + paymentTransactions + paymentSubscriptions + surveySubmissions + businesses + products + mediaFiles;
+    const commerceCost = appointmentsCost + invoicesCost + paymentOrdersCost + paymentTransactionsCost + paymentSubscriptionsCost + surveySubmissionsCost + businessesCost + productsCost + mediaFilesCost;
+
+    const discountableItems = conversations + opportunities + formSubmissions + links + socialPosts + callLogs + templates + contacts + customFields + customValues + tags + notes + tasks + commerceItems;
+    const discountableAmount = conversationsCost + opportunitiesCost + formSubmissionsCost + linksCost + socialPostsCost + callLogsCost + templatesCost + contactsCost + customFieldsCost + customValuesCost + tagsCost + notesCost + tasksCost + commerceCost;
 
     // opportunityStageHistory is billed flat (no discount), so it stays out of the discounted totals.
-    const totalItems = conversations + smsMessages + emailMessages + opportunities + formSubmissions + links + socialPosts + callLogs + templates + contacts + customFields + customValues + tags + notes + tasks;
+    const totalItems = conversations + smsMessages + emailMessages + opportunities + formSubmissions + links + socialPosts + callLogs + templates + contacts + customFields + customValues + tags + notes + tasks + commerceItems;
     const baseAmount = discountableAmount + messagesCost;
 
     const discountPercent = discountableItems > 0 ? this.getDiscountPercent(discountableItems) : 0;
@@ -293,6 +334,15 @@ class BillingService {
         customFields,
         customValues,
         tags,
+        appointments,
+        invoices,
+        paymentOrders,
+        paymentTransactions,
+        paymentSubscriptions,
+        surveySubmissions,
+        businesses,
+        products,
+        mediaFiles,
         opportunityStageHistory,
         total: totalItems + opportunityStageHistory
       },
@@ -375,6 +425,51 @@ class BillingService {
           count: tags,
           unitPrice: unitPrices.tags || DEFAULT_UNIT_PRICES.tags,
           subtotal: tagsCost
+        },
+        appointments: {
+          count: appointments,
+          unitPrice: unitPrices.appointments || DEFAULT_UNIT_PRICES.appointments,
+          subtotal: appointmentsCost
+        },
+        invoices: {
+          count: invoices,
+          unitPrice: unitPrices.invoices || DEFAULT_UNIT_PRICES.invoices,
+          subtotal: invoicesCost
+        },
+        paymentOrders: {
+          count: paymentOrders,
+          unitPrice: unitPrices.paymentOrders || DEFAULT_UNIT_PRICES.paymentOrders,
+          subtotal: paymentOrdersCost
+        },
+        paymentTransactions: {
+          count: paymentTransactions,
+          unitPrice: unitPrices.paymentTransactions || DEFAULT_UNIT_PRICES.paymentTransactions,
+          subtotal: paymentTransactionsCost
+        },
+        paymentSubscriptions: {
+          count: paymentSubscriptions,
+          unitPrice: unitPrices.paymentSubscriptions || DEFAULT_UNIT_PRICES.paymentSubscriptions,
+          subtotal: paymentSubscriptionsCost
+        },
+        surveySubmissions: {
+          count: surveySubmissions,
+          unitPrice: unitPrices.surveySubmissions || DEFAULT_UNIT_PRICES.surveySubmissions,
+          subtotal: surveySubmissionsCost
+        },
+        businesses: {
+          count: businesses,
+          unitPrice: unitPrices.businesses || DEFAULT_UNIT_PRICES.businesses,
+          subtotal: businessesCost
+        },
+        products: {
+          count: products,
+          unitPrice: unitPrices.products || DEFAULT_UNIT_PRICES.products,
+          subtotal: productsCost
+        },
+        mediaFiles: {
+          count: mediaFiles,
+          unitPrice: unitPrices.mediaFiles || DEFAULT_UNIT_PRICES.mediaFiles,
+          subtotal: mediaFilesCost
         },
         opportunityStageHistory: {
           count: opportunityStageHistory,
@@ -722,6 +817,78 @@ class BillingService {
         meterId: METER_IDS.opportunityStageHistory,
         qty: counts.opportunityStageHistory,
         description: 'Opportunity stage history exports'
+      });
+    }
+
+    if (counts.appointments > 0) {
+      charges.push({
+        meterId: METER_IDS.appointments,
+        qty: counts.appointments,
+        description: 'Appointment exports'
+      });
+    }
+
+    if (counts.invoices > 0) {
+      charges.push({
+        meterId: METER_IDS.invoices,
+        qty: counts.invoices,
+        description: 'Invoice exports'
+      });
+    }
+
+    if (counts.paymentOrders > 0) {
+      charges.push({
+        meterId: METER_IDS.paymentOrders,
+        qty: counts.paymentOrders,
+        description: 'Payment order exports'
+      });
+    }
+
+    if (counts.paymentTransactions > 0) {
+      charges.push({
+        meterId: METER_IDS.paymentTransactions,
+        qty: counts.paymentTransactions,
+        description: 'Payment transaction exports'
+      });
+    }
+
+    if (counts.paymentSubscriptions > 0) {
+      charges.push({
+        meterId: METER_IDS.paymentSubscriptions,
+        qty: counts.paymentSubscriptions,
+        description: 'Payment subscription exports'
+      });
+    }
+
+    if (counts.surveySubmissions > 0) {
+      charges.push({
+        meterId: METER_IDS.surveySubmissions,
+        qty: counts.surveySubmissions,
+        description: 'Survey submission exports'
+      });
+    }
+
+    if (counts.businesses > 0) {
+      charges.push({
+        meterId: METER_IDS.businesses,
+        qty: counts.businesses,
+        description: 'Business exports'
+      });
+    }
+
+    if (counts.products > 0) {
+      charges.push({
+        meterId: METER_IDS.products,
+        qty: counts.products,
+        description: 'Product exports'
+      });
+    }
+
+    if (counts.mediaFiles > 0) {
+      charges.push({
+        meterId: METER_IDS.mediaFiles,
+        qty: counts.mediaFiles,
+        description: 'Media file exports'
       });
     }
 

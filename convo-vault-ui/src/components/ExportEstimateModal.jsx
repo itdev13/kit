@@ -69,7 +69,7 @@ export default function ExportEstimateModal({
   // Email uses tiered creditsPerItem from breakdown (2 or 3); every other type is 1 credit per item.
   const getTotalCredits = (est) => {
     if (!est?.breakdown) return 0;
-    const flatTypes = ['conversations', 'smsWhatsapp', 'contacts', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'customFields', 'customValues', 'tags'];
+    const flatTypes = ['conversations', 'smsWhatsapp', 'contacts', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'customFields', 'customValues', 'tags', 'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles'];
     const flat = flatTypes.reduce((sum, k) => sum + (Number(est.breakdown[k]?.count) || 0), 0);
     const emailCreditsPerItem = est.breakdown.email?.creditsPerItem || CREDIT_MULTIPLIERS.email;
     return flat + (Number(est.breakdown.email?.count) || 0) * emailCreditsPerItem;
@@ -304,7 +304,10 @@ export default function ExportEstimateModal({
         const flatItemTotal = (c.conversations || 0) + (c.notes || 0) + (c.tasks || 0) +
           (c.opportunities || 0) + (c.formSubmissions || 0) + (c.links || 0) +
           (c.socialPosts || 0) + (c.callLogs || 0) + (c.templates || 0) + (c.contacts || 0) +
-          (c.customFields || 0) + (c.customValues || 0) + (c.tags || 0);
+          (c.customFields || 0) + (c.customValues || 0) + (c.tags || 0) +
+          (c.appointments || 0) + (c.invoices || 0) + (c.paymentOrders || 0) +
+          (c.paymentTransactions || 0) + (c.paymentSubscriptions || 0) + (c.surveySubmissions || 0) +
+          (c.businesses || 0) + (c.products || 0) + (c.mediaFiles || 0);
         const hasDiscountableItems = flatItemTotal > 0;
         return (
         <div className="space-y-2">
@@ -590,6 +593,33 @@ export default function ExportEstimateModal({
                   </div>
                 </div>
               )}
+
+              {/* Commerce & More — appointments, invoices, payments, surveys, businesses, products, media.
+                  All 1 credit per item; rendered generically from the breakdown. */}
+              {[
+                { key: 'appointments', label: 'Appointments', unit: 'appointment' },
+                { key: 'invoices', label: 'Invoices', unit: 'invoice' },
+                { key: 'paymentOrders', label: 'Payment Orders', unit: 'order' },
+                { key: 'paymentTransactions', label: 'Payment Transactions', unit: 'transaction' },
+                { key: 'paymentSubscriptions', label: 'Payment Subscriptions', unit: 'subscription' },
+                { key: 'surveySubmissions', label: 'Survey Submissions', unit: 'submission' },
+                { key: 'businesses', label: 'Businesses', unit: 'business' },
+                { key: 'products', label: 'Products', unit: 'product' },
+                { key: 'mediaFiles', label: 'Media Files', unit: 'file' },
+              ].map((row) => (
+                estimate.breakdown?.[row.key]?.count > 0 && (
+                  <div key={row.key} className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <div>
+                      <span className="text-gray-700 font-medium">{row.label}</span>
+                      <div className="text-xs text-gray-500">1 credit per {row.unit}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-medium text-gray-800">{formatNumber(estimate.breakdown[row.key].count)}</span>
+                      <div className="text-xs text-indigo-600 font-medium">{formatNumber(estimate.breakdown[row.key].count)} credits</div>
+                    </div>
+                  </div>
+                )
+              ))}
             </div>
           </div>
 
@@ -598,7 +628,7 @@ export default function ExportEstimateModal({
             <div className="space-y-2 text-sm">
               {/* Credit-based pricing for every export type. Every item = 1 credit at $0.018 base;
                   messages (SMS/WhatsApp + email) drop by volume via the message price ladder. */}
-              {!importMode && ['conversations', 'messages', 'contacts', 'notes', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'customFields', 'customValues', 'tags'].includes(exportType) && (
+              {!importMode && ['conversations', 'messages', 'contacts', 'notes', 'notesSearch', 'tasks', 'opportunities', 'formSubmissions', 'links', 'socialPosts', 'callLogs', 'templates', 'customFields', 'customValues', 'tags', 'appointments', 'invoices', 'paymentOrders', 'paymentTransactions', 'paymentSubscriptions', 'surveySubmissions', 'businesses', 'products', 'mediaFiles'].includes(exportType) && (
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-700">Credits</span>
@@ -622,6 +652,8 @@ export default function ExportEstimateModal({
                   customFields: { plural: 'Custom Fields to import', unit: 'Field', breakdownKey: 'customFields' },
                   customValues: { plural: 'Custom Values to import', unit: 'Value', breakdownKey: 'customValues' },
                   notes: { plural: 'Notes to import', unit: 'Note', breakdownKey: 'notes' },
+                  opportunities: { plural: 'Opportunities to import', unit: 'Opportunity', breakdownKey: 'opportunities' },
+                  tasks: { plural: 'Tasks to import', unit: 'Task', breakdownKey: 'tasks' },
                 };
                 const cfg = importLabels[exportType] || importLabels.notes;
                 const unitPrice = estimate.breakdown?.[cfg.breakdownKey]?.unitPrice ?? 0;
@@ -795,9 +827,9 @@ export default function ExportEstimateModal({
                     <span className="font-medium text-gray-800">$0.08</span>
                   </div>
                   <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
-                    PDF export — every message, email, and call transcript for the
-                    selected contacts, laid out like the GHL conversation view. Flat $0.08 per record,
-                    no volume discounts.
+                    Document export — every message, email, and call transcript for the selected
+                    contact, laid out like the GHL conversation view (PDF, HTML, or both — chosen on
+                    the tab). Flat $0.08 per record, no volume discounts.
                   </div>
                 </>
               )}

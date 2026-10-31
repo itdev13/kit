@@ -5,7 +5,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
 // Headless-Chrome PDF rendering for the Contact Bundle "Google Doc" export is loaded LAZILY inside
-// buildContactBundlePdf() — NOT at module top level. @sparticuz/chromium lives on a Lambda layer;
+// renderHtmlToPdf() — NOT at module top level. @sparticuz/chromium lives on a Lambda layer;
 // requiring it at the top would crash EVERY export (CSV/JSON included) if the layer were ever
 // missing. Lazy-loading keeps all other export types working regardless of the PDF deps.
 
@@ -434,6 +434,195 @@ async function fetchTemplatesPage(locationId, accessToken, skip, filters = {}) {
     data: templates,
     total,
     hasMore: templates.length === 100
+  };
+}
+
+/**
+ * Fetch a window of calendar events (appointments) for a location + calendar.
+ * GET /calendars/events?locationId=&calendarId=&startTime=ms&endTime=ms
+ * This endpoint is not offset-paginated — it returns every event in the [startTime,endTime]
+ * window at once. We page by splitting the overall range into month-long windows (the Lambda
+ * driver advances the cursor one window at a time).
+ */
+async function fetchAppointmentsWindow(locationId, accessToken, startTimeMs, endTimeMs, filters = {}) {
+  const params = { locationId, startTime: startTimeMs, endTime: endTimeMs };
+  if (filters.calendarId) params.calendarId = filters.calendarId;
+  if (filters.groupId) params.groupId = filters.groupId;
+
+  const response = await axios.get(`${GHL_API_URL}/calendars/events`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params
+  });
+
+  const events = response.data.events || [];
+  return { data: events, total: events.length };
+}
+
+/**
+ * Fetch a page of invoices for a location (offset-based).
+ * GET /invoices/?altId={loc}&altType=location&limit=&offset=
+ */
+async function fetchInvoicesPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/invoices/`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { altId: locationId, altType: 'location', limit: API_PAGE_SIZE, offset }
+  });
+  const invoices = response.data.invoices || [];
+  return {
+    data: invoices,
+    total: response.data.total || 0,
+    hasMore: invoices.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch a page of payment orders for a location (offset-based).
+ * GET /payments/orders?altId={loc}&locationId={loc}&limit=&offset=
+ */
+async function fetchPaymentOrdersPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/payments/orders`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { altId: locationId, locationId, limit: API_PAGE_SIZE, offset }
+  });
+  const data = response.data.data || [];
+  return {
+    data,
+    total: response.data.totalCount || 0,
+    hasMore: data.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch a page of payment transactions for a location (offset-based).
+ * GET /payments/transactions?altId={loc}&altType=location&limit=&offset=
+ */
+async function fetchPaymentTransactionsPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/payments/transactions`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { altId: locationId, altType: 'location', limit: API_PAGE_SIZE, offset }
+  });
+  const data = response.data.data || [];
+  return {
+    data,
+    total: response.data.totalCount || 0,
+    hasMore: data.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch a page of payment subscriptions for a location (offset-based).
+ * GET /payments/subscriptions?altId={loc}&altType=location&limit=&offset=
+ */
+async function fetchPaymentSubscriptionsPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/payments/subscriptions`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { altId: locationId, altType: 'location', limit: API_PAGE_SIZE, offset }
+  });
+  const data = response.data.data || [];
+  return {
+    data,
+    total: response.data.totalCount || 0,
+    hasMore: data.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch a page of survey submissions for a location (page-based).
+ * GET /surveys/submissions?locationId=&page=&limit=
+ */
+async function fetchSurveySubmissionsPage(locationId, accessToken, page = 1) {
+  const response = await axios.get(`${GHL_API_URL}/surveys/submissions`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { locationId, page, limit: API_PAGE_SIZE }
+  });
+  const submissions = response.data.submissions || [];
+  return {
+    data: submissions,
+    total: response.data.meta?.total || 0,
+    hasMore: submissions.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch all businesses for a location (single-shot — no pagination).
+ * GET /businesses/?locationId=
+ */
+async function fetchBusinessesAll(locationId, accessToken) {
+  const response = await axios.get(`${GHL_API_URL}/businesses/`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { locationId }
+  });
+  const businesses = response.data.businesses || [];
+  return { data: businesses, total: businesses.length, hasMore: false };
+}
+
+/**
+ * Fetch a page of products for a location (offset-based).
+ * GET /products/?locationId=&limit=&offset=
+ */
+async function fetchProductsPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/products/`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { locationId, limit: API_PAGE_SIZE, offset }
+  });
+  const products = response.data.products || [];
+  return {
+    data: products,
+    total: response.data.total || 0,
+    hasMore: products.length === API_PAGE_SIZE
+  };
+}
+
+/**
+ * Fetch a page of media files for a location (offset-based).
+ * GET /medias/files?locationId=&limit=&offset=
+ */
+async function fetchMediaFilesPage(locationId, accessToken, offset = 0) {
+  const response = await axios.get(`${GHL_API_URL}/medias/files`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    },
+    params: { locationId, limit: API_PAGE_SIZE, offset }
+  });
+  const files = response.data.files || [];
+  return {
+    data: files,
+    total: response.data.total || 0,
+    hasMore: files.length === API_PAGE_SIZE
   };
 }
 
@@ -927,6 +1116,47 @@ function buildContactBundleHtml(records) {
     return `${h}h ${m}m ${sec}s`;
   };
 
+  // Outbound sender label: AI / Automation (from the backend-stamped outboundKind) else the user's
+  // name, else "Team". Inbound is always the contact.
+  const displaySender = (r, meta, cid) => {
+    const outbound = String(r.direction || '').toLowerCase() === 'outbound';
+    if (!outbound) return meta.contactName || cid;
+    if (r.outboundKind === 'AI') return 'AI';
+    if (r.outboundKind === 'Automation') return 'Automation';
+    return r.senderName || 'Team';
+  };
+
+  // Mutually-exclusive bucket for the top Summary box.
+  const summaryBucket = (r) => {
+    if (r.outboundKind === 'AI') return 'AI';
+    if (r.outboundKind === 'Automation') return 'Automation';
+    const ch = String(r.channel || r.category || '');
+    if (r.category === 'call' || r.isIvr || /call|voicemail/i.test(ch)) return 'Call';
+    if (r.category === 'email' || /^email$/i.test(ch)) return 'Email';
+    if (/whatsapp/i.test(ch)) return 'WhatsApp';
+    if (/facebook/i.test(ch)) return 'Facebook';
+    if (/instagram/i.test(ch)) return 'Instagram';
+    if (/live\s*chat|webchat/i.test(ch)) return 'Live Chat';
+    if (/gmb/i.test(ch)) return 'GMB';
+    if (/sms/i.test(ch) || r.category === 'sms') return 'SMS';
+    return ch.trim() ? ch.replace(/_/g, ' ') : 'Other';
+  };
+  const buildSummaryHtml = (rows) => {
+    const counts = {};
+    for (const r of rows) { const b = summaryBucket(r); counts[b] = (counts[b] || 0) + 1; }
+    const preferred = ['SMS', 'Email', 'Call', 'Automation', 'AI'];
+    const lines = [];
+    for (const key of preferred) { if (counts[key] > 0) lines.push({ key, n: counts[key] }); delete counts[key]; }
+    for (const key of Object.keys(counts).sort()) { if (counts[key] > 0) lines.push({ key, n: counts[key] }); }
+    if (!lines.length) return '';
+    const total = rows.length;
+    return '<div class="summary"><div class="summary-title">Summary</div>' +
+      lines.map(l => '<div class="summary-row"><span class="summary-label">' + esc(l.key) +
+        '</span><span class="summary-count">' + l.n + '</span></div>').join('') +
+      '<div class="summary-row summary-total"><span class="summary-label">Total</span>' +
+        '<span class="summary-count">' + total + '</span></div></div>';
+  };
+
   let sections = '';
   for (const [contactId, rows] of byContact) {
     const meta = rows[0] || {};
@@ -939,7 +1169,9 @@ function buildContactBundleHtml(records) {
           '<span class="eh-id">(' + esc(contactId) + ')</span></div>' +
         (meta.contactEmail ? '<div class="eh-sub">Email: ' + esc(meta.contactEmail) + '</div>' : '') +
         (meta.contactPhone ? '<div class="eh-sub">Phone: ' + esc(meta.contactPhone) + '</div>' : '') +
-        '<div class="eh-sub">Exported at ' + esc(new Date().toLocaleString('en-US', tzOpts({}))) + '</div>' +
+        '<div class="eh-sub">Exported at ' + esc(new Date().toLocaleString('en-US', tzOpts({}))) +
+          (tz ? ' (' + esc(tz) + ')' : '') + '</div>' +
+        buildSummaryHtml(rows) +
       '</div>';
 
     // Inbox header bar (GHL-style).
@@ -959,11 +1191,11 @@ function buildContactBundleHtml(records) {
 
       const outbound = String(r.direction || '').toLowerCase() === 'outbound';
       const side = outbound ? 'out' : 'in';
-      // Outbound: show the sending user's name (fallback to "Team"); inbound: the contact.
-      const senderName = outbound ? (r.senderName || 'Team') : (meta.contactName || contactId);
+      // Outbound: AI / Automation / user name (fallback "Team"); inbound: the contact.
+      const senderName = displaySender(r, meta, contactId);
       const avInit = esc(initials(senderName));
       const channel = esc(r.channel || r.category || '');
-      const isCall = r.category === 'call' || /call/i.test(channel);
+      const isCall = r.category === 'call' || r.isIvr || /call|voicemail/i.test(channel);
 
       // Bubble content.
       let inner = '';
@@ -1014,6 +1246,11 @@ function buildContactBundleHtml(records) {
     '.eh-title{font-size:16px;font-weight:600;color:#111827;}' +
     '.eh-name{color:#2563eb;} .eh-id{color:#6b7280;font-weight:400;font-size:12px;}' +
     '.eh-sub{color:#6b7280;font-size:12px;margin-top:2px;}' +
+    '.summary{margin-top:12px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;max-width:280px;background:#fafbfc;}' +
+    '.summary-title{font-weight:700;color:#111827;font-size:12px;margin-bottom:6px;}' +
+    '.summary-row{display:flex;justify-content:space-between;font-size:12px;color:#475569;padding:2px 0;}' +
+    '.summary-count{font-weight:600;color:#111827;}' +
+    '.summary-total{border-top:1px solid #e5e7eb;margin-top:4px;padding-top:5px;font-weight:700;color:#111827;}' +
     '.inbox{border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;}' +
     '.inbox-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #eef0f3;background:#fafbfc;}' +
     '.ib-av{width:30px;height:30px;border-radius:50%;background:#fcd34d;color:#78350f;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;}' +
@@ -1043,8 +1280,9 @@ function buildContactBundleHtml(records) {
     '.time{font-size:10px;color:#9ca3af;margin:3px 4px 0;}' +
     '</style></head><body>' + sections + '</body></html>';
 }
-async function buildContactBundlePdf(records) {
-  const html = buildContactBundleHtml(records);
+// Render a prebuilt HTML string to a PDF buffer. Callers pass the HTML so we never build it twice
+// (the "both" path reuses the same HTML for the .html file and the PDF).
+async function renderHtmlToPdf(html) {
   // Lazy-load the heavy PDF deps only when a PDF export actually runs (they live on a Lambda layer).
   // Both @sparticuz/chromium and puppeteer-core ship as ES modules, so a plain require() fails under
   // the Node runtime. Use dynamic import() and unwrap the default export for each.
@@ -1078,6 +1316,71 @@ async function buildContactBundlePdf(records) {
   }
 }
 
+// Minimal zero-dependency ZIP (STORE / no compression) — enough to bundle a PDF + an HTML file into
+// one download for the "both" format. Avoids adding a zip library (and another thing to rebuild).
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1));
+  }
+  return (~c) >>> 0;
+}
+function buildZip(files) {
+  // files: [{ name, buffer }]
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n >>> 0, 0); return b; };
+  const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0, 0); return b; };
+  for (const f of files) {
+    const nameBuf = Buffer.from(f.name, 'utf8');
+    const data = f.buffer;
+    const crc = crc32(data);
+    const local = Buffer.concat([
+      u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(data.length), u32(data.length), u16(nameBuf.length), u16(0),
+      nameBuf, data
+    ]);
+    chunks.push(local);
+    central.push(Buffer.concat([
+      u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(data.length), u32(data.length),
+      u16(nameBuf.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset),
+      nameBuf
+    ]));
+    offset += local.length;
+  }
+  const centralBuf = Buffer.concat(central);
+  const end = Buffer.concat([
+    u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+    u32(centralBuf.length), u32(offset), u16(0)
+  ]);
+  return Buffer.concat([...chunks, centralBuf, end]);
+}
+
+/**
+ * Build the Contact Bundle (Google Doc) output artifact(s) for the requested format.
+ * Returns { buffer, ext, contentType } — a single object to PutObject. For 'both' the buffer is a
+ * .zip containing both the PDF and the HTML.
+ */
+async function buildContactBundleOutput(records, format) {
+  const html = buildContactBundleHtml(records);
+  if (format === 'html') {
+    return { buffer: Buffer.from(html, 'utf8'), ext: 'html', contentType: 'text/html; charset=utf-8' };
+  }
+  if (format === 'pdf') {
+    return { buffer: await renderHtmlToPdf(html), ext: 'pdf', contentType: 'application/pdf' };
+  }
+  // 'both' (default): PDF + HTML in one zip.
+  const pdf = await renderHtmlToPdf(html);
+  const zip = buildZip([
+    { name: 'conversation-export.pdf', buffer: pdf },
+    { name: 'conversation-export.html', buffer: Buffer.from(html, 'utf8') }
+  ]);
+  return { buffer: zip, ext: 'zip', contentType: 'application/zip' };
+}
+
 
 /**
  * Convert notes to CSV format
@@ -1102,6 +1405,41 @@ function notesToCSV(notes, includeHeader = true) {
       escapeCsv(note.body || ''),
       escapeCsv(note.bodyText || ''),
       escapeCsv(note.userId || ''),
+      escapeCsv(formatDate(note.dateAdded)),
+      escapeCsv(serializeRelations(note.relations))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert notes-search rows to CSV. Same columns as notesToCSV plus Title / Source / Pinned
+ * (the /notes/search endpoint returns those). Rows are pre-flattened by the backend gather.
+ */
+function notesSearchToCSV(notes, includeHeader = true) {
+  const header = includeHeader
+    ? 'NoteID,ContactID,ContactName,ContactEmail,ContactPhone,Title,Body,BodyText,UserID,Source,Pinned,DateAdded,Relations\n'
+    : '';
+
+  const serializeRelations = (relations) => {
+    if (!Array.isArray(relations) || relations.length === 0) return '';
+    return relations.map(r => `${r.objectKey}:${r.recordId}`).join('|');
+  };
+
+  const rows = notes.map(note => {
+    return [
+      escapeCsv(note.id),
+      escapeCsv(note.contactId || ''),
+      escapeCsv(note.contactName || ''),
+      escapeCsv(note.contactEmail || ''),
+      escapeCsv(note.contactPhone || ''),
+      escapeCsv(note.title || ''),
+      escapeCsv(note.body || ''),
+      escapeCsv(note.bodyText || ''),
+      escapeCsv(note.userId || ''),
+      escapeCsv(note.source || ''),
+      escapeCsv(note.pinned ? 'Yes' : 'No'),
       escapeCsv(formatDate(note.dateAdded)),
       escapeCsv(serializeRelations(note.relations))
     ].join(',');
@@ -1418,6 +1756,275 @@ function callLogsToCSV(callLogs, includeHeader = true) {
 }
 
 /**
+ * Convert appointments (calendar events) to CSV format
+ */
+function appointmentsToCSV(events, includeHeader = true) {
+  const header = includeHeader
+    ? 'AppointmentID,Title,CalendarID,ContactID,AssignedUserID,Status,AppointmentStatus,StartTime,EndTime,Address,Notes,DateAdded,DateUpdated\n'
+    : '';
+
+  const rows = events.map(ev => {
+    return [
+      escapeCsv(ev.id || ev._id || ''),
+      escapeCsv(ev.title || ''),
+      escapeCsv(ev.calendarId || ''),
+      escapeCsv(ev.contactId || ''),
+      escapeCsv(ev.assignedUserId || ''),
+      escapeCsv(ev.status || ''),
+      escapeCsv(ev.appointmentStatus || ''),
+      escapeCsv(formatDate(ev.startTime)),
+      escapeCsv(formatDate(ev.endTime)),
+      escapeCsv(ev.address || ''),
+      escapeCsv(ev.notes || ''),
+      escapeCsv(formatDate(ev.dateAdded)),
+      escapeCsv(formatDate(ev.dateUpdated))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert invoices to CSV format
+ */
+function invoicesToCSV(invoices, includeHeader = true) {
+  const header = includeHeader
+    ? 'InvoiceID,InvoiceNumber,Name,Status,ContactID,ContactName,ContactEmail,Currency,Total,AmountPaid,AmountDue,DueDate,IssueDate,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = invoices.map(inv => {
+    const contact = inv.contactDetails || inv.contact || {};
+    return [
+      escapeCsv(inv._id || inv.id || ''),
+      escapeCsv(inv.invoiceNumber || ''),
+      escapeCsv(inv.name || inv.title || ''),
+      escapeCsv(inv.status || ''),
+      escapeCsv(inv.contactId || contact.id || ''),
+      escapeCsv(contact.name || ''),
+      escapeCsv(contact.email || ''),
+      escapeCsv(inv.currency || ''),
+      escapeCsv(inv.total != null ? inv.total : ''),
+      escapeCsv(inv.amountPaid != null ? inv.amountPaid : ''),
+      escapeCsv(inv.amountDue != null ? inv.amountDue : ''),
+      escapeCsv(formatDate(inv.dueDate)),
+      escapeCsv(formatDate(inv.issueDate)),
+      escapeCsv(formatDate(inv.createdAt)),
+      escapeCsv(formatDate(inv.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert payment orders to CSV format
+ */
+function paymentOrdersToCSV(orders, includeHeader = true) {
+  const header = includeHeader
+    ? 'OrderID,Status,ContactID,ContactName,ContactEmail,Currency,Amount,Subtotal,Source,SourceType,LiveMode,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = orders.map(o => {
+    const contact = o.contactSnapshot || o.contact || {};
+    return [
+      escapeCsv(o._id || o.id || ''),
+      escapeCsv(o.status || ''),
+      escapeCsv(o.contactId || contact.id || ''),
+      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(contact.email || ''),
+      escapeCsv(o.currency || ''),
+      escapeCsv(o.amount != null ? o.amount : ''),
+      escapeCsv(o.subtotal != null ? o.subtotal : ''),
+      escapeCsv(o.source || ''),
+      escapeCsv(o.sourceType || ''),
+      escapeCsv(o.liveMode ? 'Yes' : 'No'),
+      escapeCsv(formatDate(o.createdAt)),
+      escapeCsv(formatDate(o.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert payment transactions to CSV format
+ */
+function paymentTransactionsToCSV(transactions, includeHeader = true) {
+  const header = includeHeader
+    ? 'TransactionID,Status,ContactID,ContactName,ContactEmail,Currency,Amount,PaymentProvider,EntityType,EntityID,ChargeID,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = transactions.map(t => {
+    const contact = t.contactSnapshot || t.contact || {};
+    const provider = t.paymentProviderType || t.paymentProvider?.type || '';
+    return [
+      escapeCsv(t._id || t.id || ''),
+      escapeCsv(t.status || ''),
+      escapeCsv(t.contactId || contact.id || ''),
+      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(contact.email || ''),
+      escapeCsv(t.currency || ''),
+      escapeCsv(t.amount != null ? t.amount : ''),
+      escapeCsv(provider),
+      escapeCsv(t.entityType || ''),
+      escapeCsv(t.entityId || ''),
+      escapeCsv(t.chargeId || ''),
+      escapeCsv(formatDate(t.createdAt)),
+      escapeCsv(formatDate(t.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert payment subscriptions to CSV format
+ */
+function paymentSubscriptionsToCSV(subscriptions, includeHeader = true) {
+  const header = includeHeader
+    ? 'SubscriptionID,Status,ContactID,ContactName,ContactEmail,Currency,Amount,Interval,ProductID,PriceID,LiveMode,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = subscriptions.map(s => {
+    const contact = s.contactSnapshot || s.contact || {};
+    const interval = s.schedule?.interval || s.interval || '';
+    return [
+      escapeCsv(s._id || s.id || ''),
+      escapeCsv(s.status || ''),
+      escapeCsv(s.contactId || contact.id || ''),
+      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(contact.email || ''),
+      escapeCsv(s.currency || ''),
+      escapeCsv(s.amount != null ? s.amount : ''),
+      escapeCsv(interval),
+      escapeCsv(s.productId || ''),
+      escapeCsv(s.priceId || ''),
+      escapeCsv(s.liveMode ? 'Yes' : 'No'),
+      escapeCsv(formatDate(s.createdAt)),
+      escapeCsv(formatDate(s.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert survey submissions to CSV format
+ */
+function surveySubmissionsToCSV(submissions, includeHeader = true) {
+  const header = includeHeader
+    ? 'SubmissionID,SurveyID,ContactID,Name,Email,CreatedAt,OtherFields\n'
+    : '';
+
+  const rows = submissions.map(sub => {
+    // Flatten 'others' object into a readable string (mirrors formSubmissionsToCSV)
+    let otherFields = '';
+    if (sub.others && typeof sub.others === 'object') {
+      otherFields = Object.entries(sub.others)
+        .filter(([key]) => !key.startsWith('event'))
+        .map(([key, val]) => `${key}: ${val}`)
+        .join('; ');
+    }
+    return [
+      escapeCsv(sub.id || sub._id || ''),
+      escapeCsv(sub.surveyId || ''),
+      escapeCsv(sub.contactId || ''),
+      escapeCsv(sub.name || ''),
+      escapeCsv(sub.email || ''),
+      escapeCsv(formatDate(sub.createdAt)),
+      escapeCsv(otherFields)
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert businesses to CSV format
+ */
+function businessesToCSV(businesses, includeHeader = true) {
+  const header = includeHeader
+    ? 'BusinessID,Name,Email,Phone,Website,Address,City,State,Country,PostalCode,LocationID,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = businesses.map(b => {
+    return [
+      escapeCsv(b.id || b._id || ''),
+      escapeCsv(b.name || ''),
+      escapeCsv(b.email || ''),
+      escapeCsv(b.phone || ''),
+      escapeCsv(b.website || ''),
+      escapeCsv(b.address || ''),
+      escapeCsv(b.city || ''),
+      escapeCsv(b.state || ''),
+      escapeCsv(b.country || ''),
+      escapeCsv(b.postalCode || ''),
+      escapeCsv(b.locationId || ''),
+      escapeCsv(formatDate(b.createdAt)),
+      escapeCsv(formatDate(b.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert products to CSV format
+ */
+function productsToCSV(products, includeHeader = true) {
+  const header = includeHeader
+    ? 'ProductID,Name,Description,ProductType,Available,Currency,Prices,LocationID,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = products.map(p => {
+    // Summarize price variants into a readable list
+    const prices = Array.isArray(p.prices)
+      ? p.prices.map(pr => `${pr.name || ''}:${pr.amount != null ? pr.amount : ''}${pr.currency || ''}`).join('; ')
+      : '';
+    const currency = Array.isArray(p.prices) && p.prices[0]?.currency ? p.prices[0].currency : (p.currency || '');
+    return [
+      escapeCsv(p._id || p.id || ''),
+      escapeCsv(p.name || ''),
+      escapeCsv(p.description || ''),
+      escapeCsv(p.productType || ''),
+      escapeCsv(p.availableInStore ? 'Yes' : 'No'),
+      escapeCsv(currency),
+      escapeCsv(prices),
+      escapeCsv(p.locationId || ''),
+      escapeCsv(formatDate(p.createdAt)),
+      escapeCsv(formatDate(p.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
+ * Convert media files to CSV format
+ */
+function mediaFilesToCSV(files, includeHeader = true) {
+  const header = includeHeader
+    ? 'FileID,Name,Type,URL,ParentID,AltType,AltID,CreatedAt,UpdatedAt\n'
+    : '';
+
+  const rows = files.map(f => {
+    return [
+      escapeCsv(f._id || f.id || ''),
+      escapeCsv(f.name || ''),
+      escapeCsv(f.type || ''),
+      escapeCsv(f.url || ''),
+      escapeCsv(f.parentId || ''),
+      escapeCsv(f.altType || ''),
+      escapeCsv(f.altId || ''),
+      escapeCsv(formatDate(f.createdAt)),
+      escapeCsv(formatDate(f.updatedAt))
+    ].join(',');
+  }).join('\n');
+
+  return header + rows + (rows.length > 0 ? '\n' : '');
+}
+
+/**
  * Convert live chat messages to CSV format
  */
 /**
@@ -1638,6 +2245,7 @@ async function sendEmail(email, downloadUrl, jobDetails) {
       subject: `Your ${
         jobDetails.exportType === 'conversations' ? 'Conversations' :
         jobDetails.exportType === 'notes' ? 'Notes' :
+        jobDetails.exportType === 'notesSearch' ? 'Notes' :
         jobDetails.exportType === 'tasks' ? 'Tasks' :
         jobDetails.exportType === 'opportunities' ? 'Opportunities' :
         jobDetails.exportType === 'formSubmissions' ? 'Form Submissions' :
@@ -1656,6 +2264,15 @@ async function sendEmail(email, downloadUrl, jobDetails) {
         jobDetails.exportType === 'callRecordings' ? 'Call Recordings' :
         jobDetails.exportType === 'opportunityStageHistory' ? 'Opportunity Stage History' :
         jobDetails.exportType === 'contactBundleDoc' ? 'Contact Bundle (Google Doc)' :
+        jobDetails.exportType === 'appointments' ? 'Appointments' :
+        jobDetails.exportType === 'invoices' ? 'Invoices' :
+        jobDetails.exportType === 'paymentOrders' ? 'Payment Orders' :
+        jobDetails.exportType === 'paymentTransactions' ? 'Payment Transactions' :
+        jobDetails.exportType === 'paymentSubscriptions' ? 'Payment Subscriptions' :
+        jobDetails.exportType === 'surveySubmissions' ? 'Survey Submissions' :
+        jobDetails.exportType === 'businesses' ? 'Businesses' :
+        jobDetails.exportType === 'products' ? 'Products' :
+        jobDetails.exportType === 'mediaFiles' ? 'Media Files' :
         jobDetails.exportType === 'contacts' ? 'Contacts' : 'Messages'
       } Export is Ready`,
       htmlContent: `
@@ -1931,22 +2548,22 @@ exports.handler = async (event, context) => {
 
       log('Contact Bundle (Google Doc): records assembled', { totalChunks, recordCount: allRecords.length });
 
-      // Output is a PDF (rendered from a GHL-style HTML template via headless Chrome) regardless of
-      // the requested format.
-      const docS3Key = `exports/${job.companyId}/${job.locationId}/${exportJobId}.pdf`;
-      const docFilename = `${job.exportType}_export.pdf`;
-      const PDF_CONTENT_TYPE = 'application/pdf';
-
-      const docBuffer = await buildContactBundlePdf(allRecords);
+      // Output format picks the artifact(s): 'pdf' | 'html' | 'both' (default 'both' → a zip of both).
+      // Rendered from a GHL-style HTML template via headless Chrome.
+      const docFormat = ['pdf', 'html', 'both'].includes(job.format) ? job.format : 'both';
+      const { buffer: docBuffer, ext: docExt, contentType: docContentType } =
+        await buildContactBundleOutput(allRecords, docFormat);
+      const docS3Key = `exports/${job.companyId}/${job.locationId}/${exportJobId}.${docExt}`;
+      const docFilename = `${job.exportType}_export.${docExt}`;
 
       await s3.send(new PutObjectCommand({
         Bucket: S3_BUCKET,
         Key: docS3Key,
         Body: docBuffer,
-        ContentType: PDF_CONTENT_TYPE,
+        ContentType: docContentType,
         ContentDisposition: `attachment; filename="${docFilename}"`
       }));
-      log('Contact Bundle (Google Doc): .pdf uploaded via putObject', { size: docBuffer.length });
+      log('Contact Bundle (Google Doc): document uploaded via putObject', { format: docFormat, ext: docExt, size: docBuffer.length });
 
       const downloadUrl = await getSignedUrl(s3, new GetObjectCommand({
         Bucket: S3_BUCKET,
@@ -1983,7 +2600,7 @@ exports.handler = async (event, context) => {
         const emailDownloadUrl = `${PUBLIC_API_URL}/api/billing/download-email/${exportJobId}?token=${downloadToken}`;
         emailSent = await sendEmail(job.notificationEmail, emailDownloadUrl, {
           exportType: job.exportType,
-          format: 'docx',
+          format: docExt,
           totalItems: processedItems
         });
         await updateJob(db, exportJobId, { emailSent });
@@ -2497,6 +3114,276 @@ exports.handler = async (event, context) => {
 
       cursor = hasMoreData ? String(currentSkip) : null;
 
+    } else if (job.exportType === 'appointments') {
+      // === APPOINTMENTS: time-window pagination ===
+      // The /calendars/events endpoint returns every event in [startTime,endTime] at once, so we
+      // page by month-long windows across the job's date range. The cursor is the next window's
+      // start (ms). One window per invocation chunk keeps per-call memory bounded.
+      const WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const rangeStart = job.filters?.startDate ? new Date(job.filters.startDate).getTime() : Date.now() - WINDOW_MS;
+      const rangeEnd = job.filters?.endDate ? new Date(job.filters.endDate).getTime() : Date.now();
+      let windowStart = cursor ? parseInt(cursor) : rangeStart;
+
+      while (windowStart < rangeEnd && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) {
+          hasMoreData = true;
+          break;
+        }
+        const windowEnd = Math.min(windowStart + WINDOW_MS, rangeEnd);
+
+        let pageResult;
+        try {
+          pageResult = await fetchAppointmentsWindow(job.locationId, accessToken, windowStart, windowEnd, job.filters || {});
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchAppointmentsWindow(job.locationId, accessToken, windowStart, windowEnd, job.filters || {});
+          } else {
+            throw fetchError;
+          }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        log('Fetched appointments window', { windowRecords: pageResult.data.length, batchTotal: recordsFetched });
+
+        // Advance to the next window (+1ms to avoid re-pulling the boundary event).
+        windowStart = windowEnd + 1;
+        if (windowStart < rangeEnd) await sleep(100);
+      }
+
+      hasMoreData = windowStart < rangeEnd;
+      cursor = hasMoreData ? String(windowStart) : null;
+
+    } else if (job.exportType === 'invoices') {
+      // === INVOICES: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchInvoicesPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchInvoicesPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
+    } else if (job.exportType === 'paymentOrders') {
+      // === PAYMENT ORDERS: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchPaymentOrdersPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchPaymentOrdersPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
+    } else if (job.exportType === 'paymentTransactions') {
+      // === PAYMENT TRANSACTIONS: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchPaymentTransactionsPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchPaymentTransactionsPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
+    } else if (job.exportType === 'paymentSubscriptions') {
+      // === PAYMENT SUBSCRIPTIONS: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchPaymentSubscriptionsPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchPaymentSubscriptionsPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
+    } else if (job.exportType === 'surveySubmissions') {
+      // === SURVEY SUBMISSIONS: page-based pagination ===
+      let page = cursor ? parseInt(cursor) : 1;
+
+      while (recordsFetched < BATCH_SIZE && hasMoreData) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) {
+          log('Approaching timeout, saving progress', { remainingMs: context.getRemainingTimeInMillis() });
+          break;
+        }
+
+        let pageResult;
+        try {
+          pageResult = await fetchSurveySubmissionsPage(job.locationId, accessToken, page);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchSurveySubmissionsPage(job.locationId, accessToken, page);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        page++;
+
+        if (pageResult.data.length < API_PAGE_SIZE) hasMoreData = false;
+        if (hasMoreData && recordsFetched < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(page) : null;
+
+    } else if (job.exportType === 'businesses') {
+      // === BUSINESSES: single-shot list, no pagination ===
+      let pageResult;
+      try {
+        pageResult = await fetchBusinessesAll(job.locationId, accessToken);
+      } catch (fetchError) {
+        if (fetchError.response?.status === 401) {
+          log('Got 401 on businesses fetch, refreshing token and retrying');
+          await refreshAndUpdateToken();
+          pageResult = await fetchBusinessesAll(job.locationId, accessToken);
+        } else { throw fetchError; }
+      }
+      records.push(...pageResult.data);
+      recordsFetched += pageResult.data.length;
+      hasMoreData = false;
+      cursor = null;
+
+    } else if (job.exportType === 'products') {
+      // === PRODUCTS: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchProductsPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchProductsPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
+    } else if (job.exportType === 'mediaFiles') {
+      // === MEDIA FILES: offset-based pagination ===
+      let offset = cursor ? parseInt(cursor) : 0;
+      let hasMoreData_inner = true;
+
+      while (hasMoreData_inner && records.length < BATCH_SIZE) {
+        if (context.getRemainingTimeInMillis() < TIMEOUT_BUFFER_MS) { hasMoreData = true; break; }
+
+        let pageResult;
+        try {
+          pageResult = await fetchMediaFilesPage(job.locationId, accessToken, offset);
+        } catch (fetchError) {
+          if (fetchError.response?.status === 401) {
+            log('Got 401, refreshing token and retrying...');
+            await refreshAndUpdateToken();
+            pageResult = await fetchMediaFilesPage(job.locationId, accessToken, offset);
+          } else { throw fetchError; }
+        }
+
+        records.push(...pageResult.data);
+        recordsFetched += pageResult.data.length;
+        offset += pageResult.data.length;
+
+        if (!pageResult.hasMore) { hasMoreData_inner = false; hasMoreData = false; }
+        else if (records.length >= BATCH_SIZE) { hasMoreData = true; }
+        if (hasMoreData_inner && records.length < BATCH_SIZE) await sleep(100);
+      }
+
+      cursor = hasMoreData ? String(offset) : null;
+
     } else if (job.exportType === 'contacts') {
       // === CONTACTS: cursor pagination via searchAfter array (ES sort tuple) ===
       // The cursor is persisted as a JSON string between Lambda invocations.
@@ -2540,8 +3427,8 @@ exports.handler = async (event, context) => {
       cursor = contactsCursor ? JSON.stringify(contactsCursor) : null;
       hasMoreData = !!cursor;
 
-    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle' || job.exportType === 'contactBundleDoc') {
-      // === SPECIAL MESSAGES / CALL TRANSCRIPTIONS: Read pre-fetched records from chunked specialexports ===
+    } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages' || job.exportType === 'callTranscriptions' || job.exportType === 'callRecordings' || job.exportType === 'opportunityStageHistory' || job.exportType === 'contactBundle' || job.exportType === 'contactBundleDoc' || job.exportType === 'notesSearch') {
+      // === SPECIAL MESSAGES / CALL TRANSCRIPTIONS / NOTES SEARCH: Read pre-fetched records from chunked specialexports ===
       // Chunk 0 is the "root" doc (has exportJobId). Remaining chunks share groupId = root._id.
       // Each chunk holds up to CHUNK_SIZE (5000) messages, matching BATCH_SIZE so one invocation = one chunk.
       const CHUNK_SIZE = 5000;
@@ -2778,6 +3665,26 @@ exports.handler = async (event, context) => {
         content = customValuesToCSV(records, isFirstContent);
       } else if (job.exportType === 'tags') {
         content = tagsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'appointments') {
+        content = appointmentsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'invoices') {
+        content = invoicesToCSV(records, isFirstContent);
+      } else if (job.exportType === 'paymentOrders') {
+        content = paymentOrdersToCSV(records, isFirstContent);
+      } else if (job.exportType === 'paymentTransactions') {
+        content = paymentTransactionsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'paymentSubscriptions') {
+        content = paymentSubscriptionsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'surveySubmissions') {
+        content = surveySubmissionsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'businesses') {
+        content = businessesToCSV(records, isFirstContent);
+      } else if (job.exportType === 'products') {
+        content = productsToCSV(records, isFirstContent);
+      } else if (job.exportType === 'mediaFiles') {
+        content = mediaFilesToCSV(records, isFirstContent);
+      } else if (job.exportType === 'notesSearch') {
+        content = notesSearchToCSV(records, isFirstContent);
       } else if (job.exportType === 'specialTabMessages' || job.exportType === 'messagesByTag' || job.exportType === 'groupMessages' || job.exportType === 'internalMessages') {
         content = specialMessagesToCSV(records, isFirstContent);
       } else if (job.exportType === 'opportunityStageHistory') {

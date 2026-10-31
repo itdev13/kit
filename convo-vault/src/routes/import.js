@@ -18,6 +18,8 @@ const IMPORT_NOTES_METER_ID = '69864aed1265653fdd7c0620'; // shared meter, same 
 const IMPORT_CONTACTS_METER_ID = '69864aed1265653fdd7c0620'; // same meter as imports/notes — shared
 const IMPORT_CUSTOM_FIELDS_METER_ID = '69864aed1265653fdd7c0620'; // shared meter
 const IMPORT_CUSTOM_VALUES_METER_ID = '69864aed1265653fdd7c0620'; // shared meter
+const IMPORT_OPPORTUNITIES_METER_ID = '69864aed1265653fdd7c0620'; // shared meter
+const IMPORT_TASKS_METER_ID = '69864aed1265653fdd7c0620'; // shared meter
 
 /**
  * FEATURE 3: Import from CSV/Excel to Conversations
@@ -1511,6 +1513,473 @@ async function processCustomValuesImportAsync(jobId, locationId, rows) {
   });
 
   logger.info(`✅ Custom values import ${jobId} done: ${successful} succeeded, ${skipped} skipped, ${failed} failed`);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// OPPORTUNITIES IMPORT — frontend parses the CSV and POSTs JSON rows.
+// Each row → upsert contact (by email/phone, if contactId not supplied) → POST /opportunities/.
+// Pricing: $0.018/row, discountable, charged upfront. exportType id: importOpportunities.
+// ════════════════════════════════════════════════════════════════════════
+
+const MAX_OPPORTUNITIES_ROWS_PER_IMPORT = 5000;
+
+router.post('/opportunities', authenticateSession, async (req, res) => {
+  try {
+    const { locationId, rows } = req.body || {};
+    const { companyId, userId } = req.user;
+
+    if (!locationId) {
+      return res.status(400).json({ success: false, error: 'locationId is required' });
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'rows must be a non-empty array' });
+    }
+    if (rows.length > MAX_OPPORTUNITIES_ROWS_PER_IMPORT) {
+      return res.status(400).json({
+        success: false,
+        error: `Too many rows (${rows.length}). Max ${MAX_OPPORTUNITIES_ROWS_PER_IMPORT} per import — please split the file.`
+      });
+    }
+
+    // Pricing: flat $0.018 per row, volume discount applies
+    const unitPrices = billingService.getUnitPrices(locationId);
+    const unitPrice = unitPrices.importOpportunities ?? 0.018;
+    const totalRows = rows.length;
+    const baseAmount = Number((totalRows * unitPrice).toFixed(4));
+    const discountPercent = billingService.getDiscountPercent(totalRows);
+    const discountAmount = Number((baseAmount * (discountPercent / 100)).toFixed(4));
+    const finalAmount = Number((baseAmount - discountAmount).toFixed(4));
+
+    const tokenData = await ghlService.getValidToken(locationId);
+    const accessToken = tokenData.accessToken || tokenData;
+
+    const hasFunds = await billingService.hasFunds(companyId, accessToken);
+    if (!hasFunds) {
+      const requiredAmount = Number(finalAmount) || 0;
+      return res.status(402).json({
+        success: false,
+        code: 'INSUFFICIENT_FUNDS',
+        error: 'Insufficient wallet balance',
+        message: `Your agency or sub-account wallet doesn't have enough funds for this import. Add at least $${requiredAmount.toFixed(2)} and try again.`,
+        requiredAmount,
+      });
+    }
+
+    const meterCharges = [{ meterId: IMPORT_OPPORTUNITIES_METER_ID, qty: totalRows, description: 'Opportunities import' }];
+
+    const transaction = await BillingTransaction.create({
+      locationId,
+      companyId,
+      type: 'import_importOpportunities',
+      itemCounts: { opportunities: totalRows, total: totalRows },
+      pricing: { baseAmount, discountPercent, discountAmount, finalAmount },
+      meterCharges,
+      status: 'pending',
+      userId
+    });
+
+    try {
+      const chargeResult = await billingService.chargeWallet(
+        companyId, accessToken, meterCharges, locationId, transaction._id.toString(), finalAmount
+      );
+      transaction.ghlChargeId = chargeResult?.charges?.map(c => c?.chargeId).join(',');
+      transaction.referralCode = chargeResult.referralCode || null;
+      if (chargeResult.internalTesting) {
+        transaction.status = 'tested';
+        transaction.internalTesting = true;
+        transaction.paymentIgnored = true;
+      } else {
+        transaction.status = 'charged';
+      }
+      await transaction.save();
+    } catch (chargeError) {
+      transaction.status = 'failed';
+      transaction.errorMessage = chargeError.message;
+      await transaction.save();
+      if (chargeError.insufficientFunds) {
+        const requiredAmount = Number(finalAmount) || 0;
+        const walletName = chargeError.walletScope === 'agency' ? 'agency wallet'
+          : chargeError.walletScope === 'location' ? 'sub-account wallet'
+          : 'agency or sub-account wallet';
+        return res.status(402).json({
+          success: false,
+          code: 'INSUFFICIENT_FUNDS',
+          error: 'Insufficient wallet balance',
+          message: `Your ${walletName} doesn't have enough funds for this import. Add at least $${requiredAmount.toFixed(2)} and try again.`,
+          requiredAmount,
+          walletScope: chargeError.walletScope || null,
+        });
+      }
+      return res.status(402).json({
+        success: false,
+        error: 'Payment failed',
+        message: chargeError.message
+      });
+    }
+
+    const job = await ImportJob.create({
+      locationId,
+      fileName: req.body.fileName || 'opportunities-import.csv',
+      totalRows,
+      status: 'pending'
+    });
+
+    processOpportunitiesImportAsync(job._id, locationId, rows);
+
+    res.json({
+      success: true,
+      message: 'Opportunities import started',
+      data: {
+        jobId: job._id,
+        totalRows,
+        status: 'processing',
+        amountCharged: finalAmount,
+        transactionId: transaction._id
+      }
+    });
+  } catch (error) {
+    logError('Opportunities import error', error, { locationId: req.body?.locationId });
+    res.status(500).json({ success: false, error: error.message || 'Failed to start opportunities import' });
+  }
+});
+
+async function processOpportunitiesImportAsync(jobId, locationId, rows) {
+  await ImportJob.findByIdAndUpdate(jobId, { status: 'processing', startedAt: new Date() });
+
+  let successful = 0;
+  let failed = 0;
+  let skipped = 0;
+  const importErrors = [];
+
+  const queue = new ThrottleQueue({ name: `opportunities-import-${jobId}`, delayMs: 350 });
+
+  let processed = 0;
+  const total = rows.length;
+
+  const get = (row, ...keys) => {
+    for (const k of keys) {
+      if (row[k] != null && row[k] !== '') return row[k];
+      const lower = k.charAt(0).toLowerCase() + k.slice(1);
+      if (row[lower] != null && row[lower] !== '') return row[lower];
+      const upper = k.charAt(0).toUpperCase() + k.slice(1);
+      if (row[upper] != null && row[upper] !== '') return row[upper];
+    }
+    return undefined;
+  };
+
+  const jobs = rows.map((row, idx) => new Promise((resolve) => {
+    queue.push(async () => {
+      try {
+        const name = (get(row, 'name', 'Name', 'opportunityName') || '').toString().trim();
+        const pipelineId = (get(row, 'pipelineId', 'pipeline_id', 'PipelineID') || '').toString().trim();
+        const pipelineStageId = (get(row, 'pipelineStageId', 'pipeline_stage_id', 'StageID', 'stageId') || '').toString().trim();
+        const status = (get(row, 'status', 'Status') || 'open').toString().trim();
+        const monetaryValue = get(row, 'monetaryValue', 'value', 'MonetaryValue');
+        let contactId = (get(row, 'contactId', 'contact_id', 'ContactID') || '').toString().trim();
+        const contactName = (get(row, 'contactName', 'ContactName') || '').toString().trim();
+        const email = (get(row, 'email', 'contactEmail', 'Email', 'ContactEmail') || '').toString().trim();
+        const phone = (get(row, 'phone', 'contactPhone', 'Phone', 'ContactPhone') || '').toString().trim();
+
+        if (!name) {
+          skipped++;
+          importErrors.push({ row: idx + 2, error: 'No opportunity name', data: {} });
+          return;
+        }
+        if (!pipelineId) {
+          skipped++;
+          importErrors.push({ row: idx + 2, error: 'No pipelineId', data: { name } });
+          return;
+        }
+
+        // Resolve contactId: upsert by email/phone when not supplied directly.
+        if (!contactId) {
+          if (!email && !phone && !contactName) {
+            skipped++;
+            importErrors.push({ row: idx + 2, error: 'No contactId or contact identifier (email/phone/name)', data: { name } });
+            return;
+          }
+          const [firstName, ...rest] = contactName.split(/\s+/);
+          const contact = await ghlService.upsertContact(locationId, {
+            firstName: firstName || undefined,
+            lastName: rest.join(' ') || undefined,
+            name: contactName || undefined,
+            email: email || undefined,
+            phone: phone || undefined
+          });
+          contactId = contact?.id || contact?.contactId;
+          if (!contactId) throw new Error('Upsert returned no contactId');
+        }
+
+        const payload = { name, pipelineId, contactId, status };
+        if (pipelineStageId) payload.pipelineStageId = pipelineStageId;
+        if (monetaryValue != null && monetaryValue !== '') payload.monetaryValue = Number(monetaryValue) || 0;
+
+        await ghlService.createOpportunity(locationId, payload);
+        successful++;
+      } catch (err) {
+        failed++;
+        importErrors.push({
+          row: idx + 2,
+          error: err.message || 'Unknown error',
+          data: { name: row.name || row.Name || '' }
+        });
+        logWarning('Opportunities import row failed', { row: idx + 2, error: err.message });
+      } finally {
+        processed++;
+        if (processed % 10 === 0 || processed === total) {
+          await ImportJob.findByIdAndUpdate(jobId, { processed, successful, failed, skipped }).catch(() => {});
+        }
+        resolve();
+      }
+    });
+  }));
+
+  await Promise.all(jobs);
+
+  await ImportJob.findByIdAndUpdate(jobId, {
+    status: 'completed',
+    processed,
+    successful,
+    failed,
+    skipped,
+    importErrors: importErrors.slice(0, 100),
+    completedAt: new Date()
+  });
+
+  logger.info(`✅ Opportunities import ${jobId} done: ${successful} succeeded, ${skipped} skipped, ${failed} failed`);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TASKS IMPORT — frontend parses the CSV and POSTs JSON rows.
+// Each row → upsert contact (by email/phone, if contactId not supplied) → POST /contacts/{id}/tasks.
+// Pricing: $0.018/row, discountable, charged upfront. exportType id: importTasks.
+// ════════════════════════════════════════════════════════════════════════
+
+const MAX_TASKS_ROWS_PER_IMPORT = 5000;
+
+router.post('/tasks', authenticateSession, async (req, res) => {
+  try {
+    const { locationId, rows } = req.body || {};
+    const { companyId, userId } = req.user;
+
+    if (!locationId) {
+      return res.status(400).json({ success: false, error: 'locationId is required' });
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'rows must be a non-empty array' });
+    }
+    if (rows.length > MAX_TASKS_ROWS_PER_IMPORT) {
+      return res.status(400).json({
+        success: false,
+        error: `Too many rows (${rows.length}). Max ${MAX_TASKS_ROWS_PER_IMPORT} per import — please split the file.`
+      });
+    }
+
+    const unitPrices = billingService.getUnitPrices(locationId);
+    const unitPrice = unitPrices.importTasks ?? 0.018;
+    const totalRows = rows.length;
+    const baseAmount = Number((totalRows * unitPrice).toFixed(4));
+    const discountPercent = billingService.getDiscountPercent(totalRows);
+    const discountAmount = Number((baseAmount * (discountPercent / 100)).toFixed(4));
+    const finalAmount = Number((baseAmount - discountAmount).toFixed(4));
+
+    const tokenData = await ghlService.getValidToken(locationId);
+    const accessToken = tokenData.accessToken || tokenData;
+
+    const hasFunds = await billingService.hasFunds(companyId, accessToken);
+    if (!hasFunds) {
+      const requiredAmount = Number(finalAmount) || 0;
+      return res.status(402).json({
+        success: false,
+        code: 'INSUFFICIENT_FUNDS',
+        error: 'Insufficient wallet balance',
+        message: `Your agency or sub-account wallet doesn't have enough funds for this import. Add at least $${requiredAmount.toFixed(2)} and try again.`,
+        requiredAmount,
+      });
+    }
+
+    const meterCharges = [{ meterId: IMPORT_TASKS_METER_ID, qty: totalRows, description: 'Tasks import' }];
+
+    const transaction = await BillingTransaction.create({
+      locationId,
+      companyId,
+      type: 'import_importTasks',
+      itemCounts: { tasks: totalRows, total: totalRows },
+      pricing: { baseAmount, discountPercent, discountAmount, finalAmount },
+      meterCharges,
+      status: 'pending',
+      userId
+    });
+
+    try {
+      const chargeResult = await billingService.chargeWallet(
+        companyId, accessToken, meterCharges, locationId, transaction._id.toString(), finalAmount
+      );
+      transaction.ghlChargeId = chargeResult?.charges?.map(c => c?.chargeId).join(',');
+      transaction.referralCode = chargeResult.referralCode || null;
+      if (chargeResult.internalTesting) {
+        transaction.status = 'tested';
+        transaction.internalTesting = true;
+        transaction.paymentIgnored = true;
+      } else {
+        transaction.status = 'charged';
+      }
+      await transaction.save();
+    } catch (chargeError) {
+      transaction.status = 'failed';
+      transaction.errorMessage = chargeError.message;
+      await transaction.save();
+      if (chargeError.insufficientFunds) {
+        const requiredAmount = Number(finalAmount) || 0;
+        const walletName = chargeError.walletScope === 'agency' ? 'agency wallet'
+          : chargeError.walletScope === 'location' ? 'sub-account wallet'
+          : 'agency or sub-account wallet';
+        return res.status(402).json({
+          success: false,
+          code: 'INSUFFICIENT_FUNDS',
+          error: 'Insufficient wallet balance',
+          message: `Your ${walletName} doesn't have enough funds for this import. Add at least $${requiredAmount.toFixed(2)} and try again.`,
+          requiredAmount,
+          walletScope: chargeError.walletScope || null,
+        });
+      }
+      return res.status(402).json({
+        success: false,
+        error: 'Payment failed',
+        message: chargeError.message
+      });
+    }
+
+    const job = await ImportJob.create({
+      locationId,
+      fileName: req.body.fileName || 'tasks-import.csv',
+      totalRows,
+      status: 'pending'
+    });
+
+    processTasksImportAsync(job._id, locationId, rows);
+
+    res.json({
+      success: true,
+      message: 'Tasks import started',
+      data: {
+        jobId: job._id,
+        totalRows,
+        status: 'processing',
+        amountCharged: finalAmount,
+        transactionId: transaction._id
+      }
+    });
+  } catch (error) {
+    logError('Tasks import error', error, { locationId: req.body?.locationId });
+    res.status(500).json({ success: false, error: error.message || 'Failed to start tasks import' });
+  }
+});
+
+async function processTasksImportAsync(jobId, locationId, rows) {
+  await ImportJob.findByIdAndUpdate(jobId, { status: 'processing', startedAt: new Date() });
+
+  let successful = 0;
+  let failed = 0;
+  let skipped = 0;
+  const importErrors = [];
+
+  const queue = new ThrottleQueue({ name: `tasks-import-${jobId}`, delayMs: 350 });
+
+  let processed = 0;
+  const total = rows.length;
+
+  const get = (row, ...keys) => {
+    for (const k of keys) {
+      if (row[k] != null && row[k] !== '') return row[k];
+      const lower = k.charAt(0).toLowerCase() + k.slice(1);
+      if (row[lower] != null && row[lower] !== '') return row[lower];
+      const upper = k.charAt(0).toUpperCase() + k.slice(1);
+      if (row[upper] != null && row[upper] !== '') return row[upper];
+    }
+    return undefined;
+  };
+
+  const jobs = rows.map((row, idx) => new Promise((resolve) => {
+    queue.push(async () => {
+      try {
+        const title = (get(row, 'title', 'Title', 'taskTitle') || '').toString().trim();
+        const bodyText = (get(row, 'body', 'Body', 'description', 'Description') || '').toString();
+        const dueDate = (get(row, 'dueDate', 'due_date', 'DueDate') || '').toString().trim();
+        const completedRaw = get(row, 'completed', 'Completed');
+        const assignedTo = (get(row, 'assignedTo', 'assigned_to', 'AssignedTo') || '').toString().trim();
+        let contactId = (get(row, 'contactId', 'contact_id', 'ContactID') || '').toString().trim();
+        const contactName = (get(row, 'contactName', 'ContactName') || '').toString().trim();
+        const email = (get(row, 'email', 'contactEmail', 'Email', 'ContactEmail') || '').toString().trim();
+        const phone = (get(row, 'phone', 'contactPhone', 'Phone', 'ContactPhone') || '').toString().trim();
+
+        if (!title) {
+          skipped++;
+          importErrors.push({ row: idx + 2, error: 'No task title', data: {} });
+          return;
+        }
+
+        // Resolve contactId: upsert by email/phone when not supplied directly.
+        if (!contactId) {
+          if (!email && !phone && !contactName) {
+            skipped++;
+            importErrors.push({ row: idx + 2, error: 'No contactId or contact identifier (email/phone/name)', data: { title } });
+            return;
+          }
+          const [firstName, ...rest] = contactName.split(/\s+/);
+          const contact = await ghlService.upsertContact(locationId, {
+            firstName: firstName || undefined,
+            lastName: rest.join(' ') || undefined,
+            name: contactName || undefined,
+            email: email || undefined,
+            phone: phone || undefined
+          });
+          contactId = contact?.id || contact?.contactId;
+          if (!contactId) throw new Error('Upsert returned no contactId');
+        }
+
+        const payload = {
+          title,
+          body: bodyText || undefined,
+          // GHL requires a dueDate (ISO). Default to now + 7 days when the row omits one.
+          dueDate: dueDate ? new Date(dueDate).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          completed: completedRaw != null ? /^(true|1|yes)$/i.test(String(completedRaw).trim()) : false
+        };
+        if (assignedTo) payload.assignedTo = assignedTo;
+
+        await ghlService.createContactTask(locationId, contactId, payload);
+        successful++;
+      } catch (err) {
+        failed++;
+        importErrors.push({
+          row: idx + 2,
+          error: err.message || 'Unknown error',
+          data: { title: row.title || row.Title || '' }
+        });
+        logWarning('Tasks import row failed', { row: idx + 2, error: err.message });
+      } finally {
+        processed++;
+        if (processed % 10 === 0 || processed === total) {
+          await ImportJob.findByIdAndUpdate(jobId, { processed, successful, failed, skipped }).catch(() => {});
+        }
+        resolve();
+      }
+    });
+  }));
+
+  await Promise.all(jobs);
+
+  await ImportJob.findByIdAndUpdate(jobId, {
+    status: 'completed',
+    processed,
+    successful,
+    failed,
+    skipped,
+    importErrors: importErrors.slice(0, 100),
+    completedAt: new Date()
+  });
+
+  logger.info(`✅ Tasks import ${jobId} done: ${successful} succeeded, ${skipped} skipped, ${failed} failed`);
 }
 
 module.exports = router;
