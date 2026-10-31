@@ -22,6 +22,7 @@ import GroupMessagesTab from './tabs/GroupMessagesTab';
 import ExportContactsTab from './tabs/ExportContactsTab';
 import ConversationMessages from './ConversationMessages';
 import { billingAPI } from '../api/billing';
+import { buildMarketplaceUrl } from '../constants/api';
 import CustomChargeTab from './tabs/CustomChargeTab';
 import ImportNotesTab from './tabs/ImportNotesTab';
 import ImportContactsTab from './tabs/ImportContactsTab';
@@ -43,6 +44,66 @@ import MediaFilesTab from './tabs/MediaFilesTab';
 import ImportOpportunitiesTab from './tabs/ImportOpportunitiesTab';
 import ImportTasksTab from './tabs/ImportTasksTab';
 import { MESSAGE_PRICE_TIERS } from '../constants/pricing';
+
+// ---------------------------------------------------------------------------
+// Consistent line-icon set for the sidebar (one visual weight, stroke 1.6).
+// Keyed by Dashboard tab id. `NavIcon` renders the matching path; anything
+// without an explicit entry falls back to a neutral document glyph, so new
+// tabs never break the UI. Icons are purely presentational.
+// ---------------------------------------------------------------------------
+const ICON_PATHS = {
+  // Conversations
+  messages: 'M8 10h8M8 14h5M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z',
+  specialTabMessages: 'M12 3l2.1 4.9L19 9l-4 3.6L16 18l-4-2.4L8 18l1-5.4L5 9l4.9-1.1L12 3z',
+  contactBundle: 'M3.3 7L12 3l8.7 4M3.3 7L12 11l8.7-4M3.3 7v10L12 21M20.7 7v10L12 21M12 11v10',
+  messagesByTag: 'M3 7v5.2a2 2 0 0 0 .6 1.4l7 7a2 2 0 0 0 2.8 0l5.8-5.8a2 2 0 0 0 0-2.8l-7-7A2 2 0 0 0 10.8 4H5a2 2 0 0 0-2 2v1zM7.5 7.5h.01',
+  groupMessages: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 4.1a4 4 0 0 1 0 7.8',
+  callTranscriptions: 'M9 18V5l12-2v13M9 13l12-2M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  callRecordings: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L7.6 9.8a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z',
+  // Contacts & CRM
+  contacts: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  opportunities: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  opportunityStageHistory: 'M3 3v18h18M7 15l3-3 3 3 5-5M18 10h2V8',
+  formSubmissions: 'M9 11l3 3 8-8M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9',
+  // Content
+  notesSearch: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M8 13h5M8 17h3',
+  notes: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z',
+  tasks: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  templates: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M8 13h8M8 17h8M8 9h2',
+  links: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7',
+  callLogs: 'M12 2a7 7 0 0 0-7 7v3.3c0 .5-.2 1-.6 1.4L3 15h18l-1.4-1.3a2 2 0 0 1-.6-1.4V9a7 7 0 0 0-7-7zM9 19a3 3 0 0 0 6 0',
+  customFields: 'M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.6 2.6 0 0 1 0 5.2H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.6 2.6 0 0 1 5.2 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z',
+  customValues: 'M9 7h6M9 11h6M9 15h4M5 3h11l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+  tags: 'M3 7v5.2a2 2 0 0 0 .6 1.4l7 7a2 2 0 0 0 2.8 0l5.8-5.8a2 2 0 0 0 0-2.8l-7-7A2 2 0 0 0 10.8 4H5a2 2 0 0 0-2 2v1zM7.5 7.5h.01',
+  // Commerce & More
+  appointments: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+  invoices: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M9 13h6M9 17h6M9 9h2',
+  paymentOrders: 'M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0',
+  paymentTransactions: 'M2 9h20M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7zM6 15h4',
+  paymentSubscriptions: 'M3 2v6h6M21 12a9 9 0 0 0-15-6.7L3 8M21 22v-6h-6M3 12a9 9 0 0 0 15 6.7l3-2.7',
+  surveySubmissions: 'M9 11l3 3 8-8M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9',
+  businesses: 'M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9h.01M9 13h.01M9 17h.01',
+  products: 'M3.3 7L12 3l8.7 4M3.3 7L12 11l8.7-4M3.3 7v10L12 21M20.7 7v10L12 21M12 11v10',
+  mediaFiles: 'M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21',
+  customCharge: 'M2 9h20M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7zM6 15h4',
+  // Import
+  importContacts: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6',
+  importNotes: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  importOpportunities: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  importTasks: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  importCustomFields: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  importCustomValues: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+};
+const FALLBACK_ICON = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6';
+
+function NavIcon({ id, className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[id] || FALLBACK_ICON} />
+    </svg>
+  );
+}
 
 // Marketing tiers for the dashboard price-drop banner: every message tier below the base rate,
 // with the live price and the savings % vs the $0.018 base. Driven by the shared pricing constant.
@@ -79,6 +140,22 @@ export default function Dashboard() {
   // gated tabs appear here; everything else is absent and renders normally.
   const [tabUpgrades, setTabUpgrades] = useState({});
   const importDisabled = disabledTabs.includes('import');
+
+  // Sidebar: quick-filter text + per-group collapse state (persisted). A collapsed group keeps its
+  // header visible but hides its items; searching overrides collapse so matches always show.
+  const [navSearch, setNavSearch] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('navCollapsed') || '[]')); }
+    catch { return new Set(); }
+  });
+  const toggleGroup = (label) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      try { localStorage.setItem('navCollapsed', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // Persist mode + sub-tab
   useEffect(() => { localStorage.setItem('dataMode', dataMode); }, [dataMode]);
@@ -523,42 +600,110 @@ export default function Dashboard() {
             Sidebar is hidden for standalone tabs (Export History, Support) where it doesn't apply. */}
         <div className="bg-white rounded-xl shadow-lg flex overflow-hidden border-t border-gray-200">
           {/* Sidebar */}
-          {!['exports', 'support'].includes(activeTab) && (
-          <aside className="w-65  flex-shrink-0 border-r border-gray-100 py-4 bg-gray-50/60">
-            {(dataMode === 'export' ? exportGroupsVisible : importGroupsVisible).map((group, gi) => (
-              <div key={group.label || `g-${gi}`} className="mb-1">
-                {group.label && (
-                  <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 select-none">
-                    {group.label}
+          {!['exports', 'support'].includes(activeTab) && (() => {
+            const q = navSearch.trim().toLowerCase();
+            const groups = (dataMode === 'export' ? exportGroupsVisible : importGroupsVisible)
+              // When searching, filter items by label and drop groups with no match.
+              .map((g) => ({ ...g, items: q ? g.items.filter((it) => it.label.toLowerCase().includes(q)) : g.items }))
+              .filter((g) => g.items.length > 0);
+            const noMatches = q && groups.length === 0;
+            return (
+            <aside className="w-64 flex-shrink-0 border-r border-gray-200/70 bg-gray-50/40 flex flex-col max-h-[calc(100vh-7rem)]">
+              {/* Search */}
+              <div className="p-3 border-b border-gray-200/70 sticky top-0 bg-gray-50/90 backdrop-blur-sm z-10">
+                <div className="relative">
+                  <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={navSearch}
+                    onChange={(e) => setNavSearch(e.target.value)}
+                    placeholder={`Search ${dataMode === 'export' ? 'exports' : 'imports'}…`}
+                    className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition"
+                  />
+                  {navSearch && (
+                    <button
+                      onClick={() => setNavSearch('')}
+                      title="Clear"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Groups */}
+              <nav className="flex-1 overflow-y-auto py-2 px-2">
+                {noMatches && (
+                  <div className="px-3 py-8 text-center text-sm text-gray-400">
+                    No exports match “{navSearch.trim()}”.
                   </div>
                 )}
-                {group.items.map((tab) => {
-                  const isActive = activeTab === tab.id;
+                {groups.map((group, gi) => {
+                  // Searching forces every matching group open; otherwise honor the collapse state.
+                  const collapsed = !q && group.label && collapsedGroups.has(group.label);
                   return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setShowConversationView(false);
-                      }}
-                      title={tab.label}
-                      className={`
-                        w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-all text-left
-                        ${isActive
-                          ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-600'
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800 border-r-2 border-transparent'
-                        }
-                      `}
-                    >
-                      <span className="text-base leading-none">{tab.icon}</span>
-                      <span className="truncate">{tab.label}</span>
-                    </button>
+                    <div key={group.label || `g-${gi}`} className="mb-1">
+                      {group.label && (
+                        <button
+                          onClick={() => toggleGroup(group.label)}
+                          className="w-full group flex items-center gap-1.5 px-2.5 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 select-none transition-colors"
+                        >
+                          <svg
+                            className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`}
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                          >
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                          <span className="flex-1 text-left">{group.label}</span>
+                          <span className="text-[10px] font-semibold text-gray-300 group-hover:text-gray-400 tabular-nums">{group.items.length}</span>
+                        </button>
+                      )}
+                      {!collapsed && (
+                        <div className="space-y-0.5 mt-0.5">
+                          {group.items.map((tab) => {
+                            const isActive = activeTab === tab.id;
+                            return (
+                              <button
+                                key={tab.id}
+                                onClick={() => {
+                                  setActiveTab(tab.id);
+                                  setShowConversationView(false);
+                                }}
+                                title={tab.label}
+                                className={`
+                                  w-full flex items-center gap-2.5 pl-2 pr-2.5 py-1.5 rounded-lg text-sm font-medium transition-all text-left group/item
+                                  ${isActive
+                                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                                    : 'text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm'
+                                  }
+                                `}
+                              >
+                                <span className={`
+                                  flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors
+                                  ${isActive
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-white text-gray-500 border border-gray-200 group-hover/item:text-blue-600 group-hover/item:border-blue-200'
+                                  }
+                                `}>
+                                  <NavIcon id={tab.id} />
+                                </span>
+                                <span className="truncate">{tab.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-              </div>
-            ))}
-          </aside>
-          )}
+              </nav>
+            </aside>
+            );
+          })()}
 
           {/* Content */}
           <div className="flex-1 min-w-0 p-8">
@@ -594,7 +739,7 @@ export default function Dashboard() {
                       || 'This feature is available in a newer version of the app. Please update the app to the latest version to use it.'}
                   </p>
                   <a
-                    href="https://marketplace.gohighlevel.com/integration/694f93f8a6babf0c821b1356"
+                    href={buildMarketplaceUrl(tabUpgrades[activeTab]?.requiredVersionId)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 mt-5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors shadow-sm"

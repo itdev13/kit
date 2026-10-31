@@ -1,5 +1,5 @@
 import React from 'react';
-import { OAUTH_AUTHORIZE_URL } from '../constants/api';
+import { OAUTH_AUTHORIZE_URL, buildMarketplaceUrl } from '../constants/api';
 
 export default function ErrorScreen({ error }) {
   // Convert error object to string if needed
@@ -72,8 +72,8 @@ export default function ErrorScreen({ error }) {
                   <li className="font-medium">
                     <strong>{isTokenExpired ? 'Reconnect' : 'Install'} ExportKit via OAuth:</strong>
                     <br />
-                    <a 
-                      href="https://marketplace.gohighlevel.com/integration/694f93f8a6babf0c821b1356" 
+                    <a
+                      href={buildMarketplaceUrl()}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-block mt-2 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold"
@@ -117,7 +117,7 @@ export default function ErrorScreen({ error }) {
             )}
             {needsReconnect && (
               <a
-                href="https://marketplace.gohighlevel.com/integration/694f93f8a6babf0c821b1356"
+                href={buildMarketplaceUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-center font-medium"
