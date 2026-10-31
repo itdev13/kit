@@ -485,7 +485,8 @@ async function fetchInvoicesPage(locationId, accessToken, offset = 0) {
 
 /**
  * Fetch a page of payment orders for a location (offset-based).
- * GET /payments/orders?altId={loc}&locationId={loc}&limit=&offset=
+ * GET /payments/orders?altId={loc}&altType=location&locationId={loc}&limit=&offset=
+ * NOTE: altType is REQUIRED — omitting it returns 422 "altType should not be empty".
  */
 async function fetchPaymentOrdersPage(locationId, accessToken, offset = 0) {
   const response = await axios.get(`${GHL_API_URL}/payments/orders`, {
@@ -494,7 +495,7 @@ async function fetchPaymentOrdersPage(locationId, accessToken, offset = 0) {
       'Content-Type': 'application/json',
       'Version': '2021-07-28'
     },
-    params: { altId: locationId, locationId, limit: API_PAGE_SIZE, offset }
+    params: { altId: locationId, altType: 'location', locationId, limit: API_PAGE_SIZE, offset }
   });
   const data = response.data.data || [];
   return {
@@ -607,7 +608,8 @@ async function fetchProductsPage(locationId, accessToken, offset = 0) {
 
 /**
  * Fetch a page of media files for a location (offset-based).
- * GET /medias/files?locationId=&limit=&offset=
+ * GET /medias/files — GHL requires type (file|folder), altType (location) & altId; omitting `type`
+ * returns 422 "type must be a string, type should not be empty".
  */
 async function fetchMediaFilesPage(locationId, accessToken, offset = 0) {
   const response = await axios.get(`${GHL_API_URL}/medias/files`, {
@@ -616,12 +618,19 @@ async function fetchMediaFilesPage(locationId, accessToken, offset = 0) {
       'Content-Type': 'application/json',
       'Version': '2021-07-28'
     },
-    params: { locationId, limit: API_PAGE_SIZE, offset }
+    params: {
+      locationId,
+      altType: 'location',
+      altId: locationId,
+      type: 'file',
+      limit: API_PAGE_SIZE,
+      offset
+    }
   });
   const files = response.data.files || [];
   return {
     data: files,
-    total: response.data.total || 0,
+    total: typeof response.data.total === 'number' ? response.data.total : 0,
     hasMore: files.length === API_PAGE_SIZE
   };
 }
@@ -1803,7 +1812,7 @@ function invoicesToCSV(invoices, includeHeader = true) {
       escapeCsv(contact.name || ''),
       escapeCsv(contact.email || ''),
       escapeCsv(inv.currency || ''),
-      escapeCsv(inv.total != null ? inv.total : ''),
+      escapeCsv(inv.total != null ? inv.total : (inv.subTotal != null ? inv.subTotal : '')),
       escapeCsv(inv.amountPaid != null ? inv.amountPaid : ''),
       escapeCsv(inv.amountDue != null ? inv.amountDue : ''),
       escapeCsv(formatDate(inv.dueDate)),
@@ -1825,17 +1834,22 @@ function paymentOrdersToCSV(orders, includeHeader = true) {
     : '';
 
   const rows = orders.map(o => {
+    // GHL payment order: contactName/contactEmail are flat fields; status is paymentStatus;
+    // the order value is `subtotal` (no `amount`); the source is `sourceName`/`sourceType`.
     const contact = o.contactSnapshot || o.contact || {};
+    const amount = o.amount != null ? o.amount
+      : (o.total != null ? o.total
+      : (o.amountDue != null ? o.amountDue : ''));
     return [
       escapeCsv(o._id || o.id || ''),
-      escapeCsv(o.status || ''),
+      escapeCsv(o.paymentStatus || o.status || ''),
       escapeCsv(o.contactId || contact.id || ''),
-      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
-      escapeCsv(contact.email || ''),
+      escapeCsv(o.contactName || contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(o.contactEmail || contact.email || ''),
       escapeCsv(o.currency || ''),
-      escapeCsv(o.amount != null ? o.amount : ''),
+      escapeCsv(amount),
       escapeCsv(o.subtotal != null ? o.subtotal : ''),
-      escapeCsv(o.source || ''),
+      escapeCsv(o.sourceName || o.source || ''),
       escapeCsv(o.sourceType || ''),
       escapeCsv(o.liveMode ? 'Yes' : 'No'),
       escapeCsv(formatDate(o.createdAt)),
@@ -1855,14 +1869,16 @@ function paymentTransactionsToCSV(transactions, includeHeader = true) {
     : '';
 
   const rows = transactions.map(t => {
+    // GHL transaction: contactName/contactEmail are flat; paymentProvider is a string ("stripe").
     const contact = t.contactSnapshot || t.contact || {};
-    const provider = t.paymentProviderType || t.paymentProvider?.type || '';
+    const provider = (typeof t.paymentProvider === 'string' ? t.paymentProvider : t.paymentProvider?.type)
+      || t.paymentProviderType || '';
     return [
       escapeCsv(t._id || t.id || ''),
       escapeCsv(t.status || ''),
       escapeCsv(t.contactId || contact.id || ''),
-      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
-      escapeCsv(contact.email || ''),
+      escapeCsv(t.contactName || contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(t.contactEmail || contact.email || ''),
       escapeCsv(t.currency || ''),
       escapeCsv(t.amount != null ? t.amount : ''),
       escapeCsv(provider),
@@ -1886,14 +1902,15 @@ function paymentSubscriptionsToCSV(subscriptions, includeHeader = true) {
     : '';
 
   const rows = subscriptions.map(s => {
+    // GHL subscription: contactName/contactEmail are flat; provider is paymentProviderType.
     const contact = s.contactSnapshot || s.contact || {};
     const interval = s.schedule?.interval || s.interval || '';
     return [
       escapeCsv(s._id || s.id || ''),
       escapeCsv(s.status || ''),
       escapeCsv(s.contactId || contact.id || ''),
-      escapeCsv(contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
-      escapeCsv(contact.email || ''),
+      escapeCsv(s.contactName || contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || ''),
+      escapeCsv(s.contactEmail || contact.email || ''),
       escapeCsv(s.currency || ''),
       escapeCsv(s.amount != null ? s.amount : ''),
       escapeCsv(interval),

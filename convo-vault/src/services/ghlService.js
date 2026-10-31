@@ -1905,12 +1905,14 @@ class GHLService {
 
   /**
    * Get payment orders for a location
-   * GET /payments/orders?altId={loc}&locationId={loc}&limit=&offset=
+   * GET /payments/orders?altId={loc}&altType=location&locationId={loc}&limit=&offset=
+   * NOTE: altType is REQUIRED — omitting it returns 422 "altType should not be empty".
    */
   async getPaymentOrders(locationId, options = {}) {
     try {
       const params = {
         altId: locationId,
+        altType: 'location',
         locationId,
         limit: options.limit || 100,
         offset: options.offset || 0
@@ -2040,12 +2042,16 @@ class GHLService {
 
   /**
    * Get media files for a location
-   * GET /medias/files?locationId=&limit=&offset=
+   * GET /medias/files — GHL requires: type (file|folder), altType (location), altId (locationId),
+   * plus sortBy/sortOrder. Omitting `type` returns 422 "type must be a string, type should not be empty".
    */
   async getMediaFiles(locationId, options = {}) {
     try {
       const params = {
         locationId,
+        altType: 'location',
+        altId: locationId,
+        type: options.type || 'file',
         limit: options.limit || 100,
         offset: options.offset || 0
       };
@@ -2053,7 +2059,7 @@ class GHLService {
       const files = response.files || [];
       return {
         files,
-        total: response.total || files.length || 0
+        total: typeof response.total === 'number' ? response.total : (files.length || 0)
       };
     } catch (error) {
       logger.error('Get media files failed:', error.message);
