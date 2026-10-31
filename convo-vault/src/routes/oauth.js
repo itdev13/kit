@@ -402,7 +402,9 @@ router.get('/callback', async (req, res) => {
             padding: 6px 12px; border-radius: 999px; margin-bottom: 18px;
           }
           .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(22,163,74,0.18); }
-          .logo { width: 66px; height: 66px; border-radius: 16px; object-fit: contain; background: #fff; box-shadow: 0 4px 14px rgba(15,23,42,0.12); padding: 8px; }
+          /* The app icon already has its own (dark, rounded) background, so no white tile — just a soft
+             shadow + matching radius. object-fit:cover fills the rounded box cleanly. */
+          .logo { width: 66px; height: 66px; border-radius: 16px; object-fit: cover; box-shadow: 0 6px 18px rgba(15,23,42,0.22); display: block; margin: 0 auto; }
           .brand-name { margin-top: 12px; font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
           .powered { font-size: 10.5px; font-weight: 600; color: var(--ink-faint); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
           h1 { font-size: 27px; font-weight: 800; letter-spacing: -.02em; margin: 16px 0 6px; text-wrap: balance; }
@@ -470,7 +472,7 @@ router.get('/callback', async (req, res) => {
           <div class="hero">
             <div class="badge"><span class="dot"></span> Installation complete</div>
             <div>
-              <img class="logo" src="${brand.icon}" alt="${brand.name}">
+              <img class="logo" src="${brand.icon}" alt="${brand.name}" onerror="this.style.display='none'">
               <div class="brand-name">${brand.name}</div>
               ${brand.poweredBy ? `<div class="powered">Powered by Vaultsuite</div>` : ""}
             </div>
