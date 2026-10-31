@@ -53,7 +53,7 @@ export default function SimpleExportTab({ exportType, title, subtitle, buttonLab
     setEstimateError(null);
     try {
       const res = await billingAPI.getEstimate(location.id, exportType, {});
-      if (res.success) setEstimate(res.data.estimate);
+      if (res.success && res.data?.estimate) setEstimate(res.data.estimate);
       else setEstimateError(res.error || 'Failed to calculate estimate');
     } catch (err) {
       setEstimateError(err.message || 'Failed to calculate estimate');

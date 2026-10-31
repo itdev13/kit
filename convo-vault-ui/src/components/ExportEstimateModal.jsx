@@ -1037,6 +1037,16 @@ export default function ExportEstimateModal({
         </div>
         );
       })()}
+
+      {/* Fallback: the modal is open but none of the states above matched (no spinner, no error, no
+          estimate data yet). Show a spinner so the body is never blank — prevents a header-only modal
+          if an estimate response resolves without data or a state transition is in flight. */}
+      {!estimating && !error && !estimate && !postExportBilling && (
+        <div className="flex flex-col justify-center items-center py-12">
+          <Spin size="large" />
+          <span className="mt-4 text-gray-600">Calculating estimate...</span>
+        </div>
+      )}
     </Modal>
   );
 }
