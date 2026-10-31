@@ -56,14 +56,27 @@ code {
 /* Ant Design Custom Styles - Add borders */
 .ant-input,
 .ant-input-number,
+.ant-input-affix-wrapper,
 .ant-select-selector,
 .ant-picker {
   border: 1px solid #d1d5db !important; /* gray-300 */
   border-radius: 0.5rem !important; /* rounded-lg */
 }
 
+/* When an input uses allowClear/prefix, antd wraps it in .ant-input-affix-wrapper and the inner
+   .ant-input becomes borderless — give it no border/radius/shadow of its own so only the wrapper
+   draws the field (prevents a double, over-rounded box). */
+.ant-input-affix-wrapper > .ant-input,
+.ant-input-affix-wrapper > .ant-input:hover,
+.ant-input-affix-wrapper > .ant-input:focus {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 .ant-input:hover,
 .ant-input-number:hover,
+.ant-input-affix-wrapper:hover,
 .ant-select-selector:hover,
 .ant-picker:hover {
   border-color: #3b82f6 !important; /* blue-500 */
@@ -71,6 +84,7 @@ code {
 
 .ant-input:focus,
 .ant-input-number:focus,
+.ant-input-affix-wrapper-focused,
 .ant-select-focused .ant-select-selector,
 .ant-picker-focused {
   border-color: #3b82f6 !important; /* blue-500 */

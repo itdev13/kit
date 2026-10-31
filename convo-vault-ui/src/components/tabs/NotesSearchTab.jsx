@@ -222,7 +222,7 @@ export default function NotesSearchTab() {
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Contacts <span className="text-red-500">*</span> <span className="text-gray-400">(required, up to 200)</span>
+            Contacts <span className="text-red-500">*</span>
           </label>
           <Select
             mode="multiple"
