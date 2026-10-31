@@ -273,8 +273,9 @@ export default function ExportEstimateModal({
         </div>
       )}
 
-      {/* No Data State */}
-      {!postExportBilling && estimate && !estimating && (!estimate.itemCounts?.total || estimate.itemCounts?.total === 0) && (
+      {/* No Data State — fires whenever the total isn't a positive number (0, undefined, NaN, or a
+          stringified count), so a malformed/empty estimate never leaves the modal body blank. */}
+      {!postExportBilling && estimate && !estimating && !(Number(estimate.itemCounts?.total) > 0) && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,7 +295,7 @@ export default function ExportEstimateModal({
       )}
 
       {/* Estimate Content */}
-      {!postExportBilling && estimate && !estimating && estimate.itemCounts?.total > 0 && (() => {
+      {!postExportBilling && estimate && !estimating && Number(estimate.itemCounts?.total) > 0 && (() => {
         // The percentage Volume Discount Tiers (0/20/40/50/70%) apply ONLY to flat-rate items.
         // Messages (SMS/WhatsApp + email) are priced by the message ladder instead, so for a
         // messages-only export `discountPercent` is 0 and the tier list would misleadingly

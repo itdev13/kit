@@ -2013,7 +2013,15 @@ class GHLService {
   async getBusinesses(locationId) {
     try {
       const response = await this.apiRequest('GET', '/businesses/', locationId, null, { locationId });
-      const businesses = response.businesses || [];
+      // GHL returns { businesses: [...] } (no total field). Be resilient to alternate shapes.
+      const businesses = response.businesses || response.data || (Array.isArray(response) ? response : []);
+      // Diagnostic: if the count comes back 0, log the raw top-level keys so we can see the real shape.
+      if (!businesses.length) {
+        logger.warn('getBusinesses returned 0 — raw response keys:', {
+          keys: response && typeof response === 'object' ? Object.keys(response) : typeof response,
+          locationId
+        });
+      }
       return {
         businesses,
         total: businesses.length
