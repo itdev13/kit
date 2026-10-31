@@ -40,7 +40,9 @@ router.post('/convo-vault', ghlSignatureGuard, async (req, res) => {
     }
     
     // Handle based on webhook type
-    if (type === 'INSTALL') {
+    if (type === 'INSTALL' || type === 'UPDATE') {
+      // INSTALL and UPDATE both carry the current versionId; handleInstall's existing-install branch
+      // refreshes it, so an app-version upgrade keeps Installation.versionId current for the tab gate.
       await handleInstall(webhookData);
     } else if (type === 'UNINSTALL') {
       await handleUninstall(webhookData);
@@ -81,7 +83,8 @@ async function handleInstall(data) {
     trial,
     isWhitelabelCompany,
     whitelabelDetails,
-    companyName
+    companyName,
+    versionId
   } = data;
 
   // Which app is this install from? The webhook's appId identifies the marketplace app.
@@ -120,6 +123,7 @@ async function handleInstall(data) {
       installation.isWhitelabelCompany = isWhitelabelCompany;
       installation.whitelabelDetails = whitelabelDetails || {};
       installation.companyName = companyName || installation.companyName;
+      installation.versionId = versionId || installation.versionId;
       installation.rawWebhookData = data;
       installation.installedAt = new Date();
       installation.lite = isLite;
@@ -141,6 +145,7 @@ async function handleInstall(data) {
         isWhitelabelCompany: isWhitelabelCompany || false,
         whitelabelDetails: whitelabelDetails || {},
         companyName,
+        versionId: versionId || null,
         status: 'active',
         installedAt: new Date(),
         rawWebhookData: data,

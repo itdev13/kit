@@ -63,6 +63,9 @@ export default function Dashboard() {
   // Per-location tab kill-switch (from AppConfig `disabledTabs:<locationId>`). Holds tab ids to
   // hide, and/or the value 'import' to hide the whole Import mode. Empty = nothing disabled.
   const [disabledTabs, setDisabledTabs] = useState([]);
+  // Per-tab app-version gate: { tabId: { needsUpgrade, forceUpdate, reason, ... } }. Only out-of-date
+  // gated tabs appear here; everything else is absent and renders normally.
+  const [tabUpgrades, setTabUpgrades] = useState({});
   const importDisabled = disabledTabs.includes('import');
 
   // Persist mode + sub-tab
@@ -77,6 +80,7 @@ export default function Dashboard() {
       setCallRecordingsEnabled(!!res?.data?.callRecordingsEnabled);
       setContactBundleDocEnabled(!!res?.data?.contactBundleDocEnabled);
       setDisabledTabs(Array.isArray(res?.data?.disabledTabs) ? res.data.disabledTabs : []);
+      setTabUpgrades(res?.data?.tabUpgrades && typeof res.data.tabUpgrades === 'object' ? res.data.tabUpgrades : {});
     }).catch(() => {});
   }, [location?.id]);
 
@@ -549,6 +553,27 @@ export default function Dashboard() {
                 conversation={selectedConversation}
                 onBack={() => setShowConversationView(false)}
               />
+            ) : (tabUpgrades[activeTab]?.needsUpgrade) ? (
+              // Per-tab app-version gate — the active tab requires a newer app version. Shown at render
+              // (the tab stays clickable). Only new/out-of-date tabs land here; existing tabs never do.
+              <div className="flex items-center justify-center py-16">
+                <div className="max-w-md text-center bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-8">
+                  <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center text-3xl mx-auto mb-4">⬆️</div>
+                  <h3 className="text-lg font-bold text-gray-900">Update the app to use this feature</h3>
+                  <p className="text-sm text-gray-600 mt-2">
+                    {tabUpgrades[activeTab]?.reason
+                      || 'This feature is available in a newer version of the app. Please update the app to the latest version to use it.'}
+                  </p>
+                  <a
+                    href="https://marketplace.gohighlevel.com/integration/694f93f8a6babf0c821b1356"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 mt-5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors shadow-sm"
+                  >
+                    Update the app
+                  </a>
+                </div>
+              </div>
             ) : (
               <>
                 {activeTab === 'conversations' && <ConversationsTab onSelectConversation={handleConversationSelect} />}

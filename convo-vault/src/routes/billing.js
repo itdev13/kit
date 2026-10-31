@@ -13,6 +13,8 @@ const logger = require('../utils/logger');
 const { logError, getUserFriendlyMessage } = require('../utils/errorLogger');
 const { authenticateSession } = require('../middleware/auth');
 const SpecialExport = require('../models/SpecialExport');
+const Installation = require('../models/Installation');
+const TabVersionRequirement = require('../models/TabVersionRequirement');
 const AppConfig = require('../models/AppConfig');
 const PricingRequest = require('../models/PricingRequest');
 const nodemailer = require('nodemailer');
@@ -3865,6 +3867,40 @@ router.get('/pricing', async (req, res) => {
       return vals.includes(locationId) || (companyId && vals.includes(companyId));
     });
   }
+
+  // Per-tab app-version gate (opt-in). For each tab that has a TabVersionRequirement row, compare the
+  // location's installed versionId against the required one; if they differ, the tab needs an upgrade.
+  // Tabs with no row are never gated — existing tabs are completely unaffected.
+  // Shape: { tabId: { needsUpgrade: bool, forceUpdate: bool, requiredVersionId, installedVersionId, reason } }
+  const tabUpgrades = {};
+  if (locationId) {
+    try {
+      const reqs = await TabVersionRequirement.find({}).lean();
+      if (reqs.length) {
+        // Premium install for this location carries the versionId (lite excluded).
+        const install = await Installation.findOne({ locationId, status: 'active', lite: { $ne: true } })
+          .sort({ installedAt: -1 }).lean().catch(() => null);
+        const installedVersionId = install?.versionId || null;
+        for (const r of reqs) {
+          const needsUpgrade = installedVersionId !== r.requiredVersionId;
+          if (!needsUpgrade) continue;
+          // One rule can gate several tabs (tabIds is a list) — flag each.
+          for (const tabId of (Array.isArray(r.tabIds) ? r.tabIds : [])) {
+            tabUpgrades[tabId] = {
+              needsUpgrade: true,
+              forceUpdate: r.forceUpdate !== false,
+              requiredVersionId: r.requiredVersionId,
+              installedVersionId,
+              reason: r.reason || null
+            };
+          }
+        }
+      }
+    } catch (e) {
+      logger.warn('Tab version gate lookup failed (non-blocking)', { error: e.message });
+    }
+  }
+
   res.json({
     success: true,
     data: {
@@ -3880,7 +3916,9 @@ router.get('/pricing', async (req, res) => {
       callRecordingsEnabled,
       contactBundleDocEnabled,
       // Tab ids (and/or 'import') to hide for this location. UI filters its tab list by this.
-      disabledTabs
+      disabledTabs,
+      // Per-tab upgrade gate — only populated for tabs that have a requirement row AND are out of date.
+      tabUpgrades
     }
   });
 });

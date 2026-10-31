@@ -18,6 +18,15 @@ const installationSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+
+  // Marketplace app version the location installed/updated to (from the INSTALL/UPDATE webhook).
+  // Used by the per-tab upgrade gate: a new tab can require a specific versionId, and locations on
+  // a different versionId are shown an "update the app" message when they open that tab.
+  versionId: {
+    type: String,
+    default: null,
+    index: true
+  },
   
   // Company/Location details
   companyId: {
