@@ -3380,8 +3380,9 @@ router.post('/charge-and-export', authenticateSession, async (req, res) => {
         counts.products = totalItems;
 
       } else if (exportType === 'mediaFiles') {
-        const result = await ghlService.getMediaFiles(locationId, { limit: 1, offset: 0 });
-        totalItems = result.total || 0;
+        // GHL's /medias/files has no reliable `total`. Prefer the accurate count from the estimate
+        // (passed as estimatedTotal); fall back to a full paginated count so we never bill for 1.
+        totalItems = filters?.estimatedTotal || await ghlService.countMediaFiles(locationId);
         counts.mediaFiles = totalItems;
 
       } else if (exportType === 'specialTabMessages') {
