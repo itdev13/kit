@@ -2083,6 +2083,25 @@ class GHLService {
   }
 
   /**
+   * Count ALL media files by paginating (offset-based). GHL's /medias/files does NOT return a
+   * reliable `total`, so a limit:1 probe reports 1 even when there are hundreds — which would
+   * under-bill the export. This walks every page and returns the true count. Safety-capped.
+   */
+  async countMediaFiles(locationId, options = {}) {
+    const PAGE = 100;
+    const MAX_PAGES = 1000; // hard cap (100k files) to avoid a runaway loop
+    let offset = 0;
+    let count = 0;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const { files } = await this.getMediaFiles(locationId, { ...options, limit: PAGE, offset });
+      count += files.length;
+      if (files.length < PAGE) break; // last page
+      offset += PAGE;
+    }
+    return count;
+  }
+
+  /**
    * Create an opportunity
    * POST /opportunities/
    */

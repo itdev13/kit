@@ -459,8 +459,9 @@ router.post('/estimate', authenticateSession, async (req, res) => {
       counts.products = result.total || 0;
 
     } else if (exportType === 'mediaFiles') {
-      const result = await ghlService.getMediaFiles(locationId, { limit: 1, offset: 0 });
-      counts.mediaFiles = result.total || 0;
+      // GHL's /medias/files has no reliable `total`, so a limit:1 probe reports 1 even with hundreds
+      // of files (under-billing). Walk every page for the true count.
+      counts.mediaFiles = await ghlService.countMediaFiles(locationId);
 
     } else if (exportType === 'opportunityStageHistory') {
       // Opportunity Stage History (gated custom build) — full walk:
