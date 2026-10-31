@@ -269,125 +269,237 @@ router.get('/callback', async (req, res) => {
       var successMessage = `Successfully connected to your account`;
     }
 
+    // Feature catalog shown on the welcome page. Grouped the way the in-app sidebar groups them, so
+    // what a new user reads here matches what they'll see. Import features are premium-only (gated by
+    // isLite). Everything is brand-aware via the `brand` object above.
+    const featureGroups = [
+      {
+        title: 'Conversations',
+        items: [
+          'Messages — full history with channel, date &amp; user filters',
+          'Activity Messages &amp; Group Messages',
+          'All Contact Communication in one bundle',
+          'Messages by Tag',
+          'Call Transcriptions &amp; Call Recordings',
+        ],
+      },
+      {
+        title: 'Contacts &amp; CRM',
+        items: [
+          'Contacts (with custom fields)',
+          'Opportunities &amp; Stage History',
+          'Form Submissions',
+        ],
+      },
+      {
+        title: 'Content',
+        items: [
+          'Notes (account-wide) &amp; Notes by Tag',
+          'Tasks, Templates &amp; Links',
+          'Voice AI call logs',
+          'Custom Fields, Custom Values &amp; Tags',
+        ],
+      },
+      {
+        title: 'Commerce',
+        items: [
+          'Appointments &amp; Calendars',
+          'Invoices, Payment Orders &amp; Transactions',
+          'Subscriptions, Surveys &amp; Products',
+          'Businesses &amp; Media Files',
+        ],
+      },
+    ];
+    if (!isLite) {
+      featureGroups.push({
+        title: 'Import &amp; more',
+        items: [
+          'Import Contacts, Notes, Opportunities &amp; Tasks from CSV',
+          'Import Custom Fields &amp; Custom Values',
+          'Contact timeline as a shareable PDF / HTML document',
+          'Volume discounts — the more you export, the less per record',
+        ],
+      });
+    } else {
+      featureGroups.push({
+        title: 'Output',
+        items: [
+          'Export to CSV or JSON',
+          'Advanced export with conversationId',
+          'Volume discounts on every export',
+        ],
+      });
+    }
+
+    const featureCards = featureGroups.map((g) => `
+              <div class="feature-card">
+                <div class="feature-card-title">${g.title}</div>
+                <ul class="feature-list">
+                  ${g.items.map((it) => `<li>${it}</li>`).join('')}
+                </ul>
+              </div>`).join('');
+
     res.send(`
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
-        <title>Success - ${brand.name}</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Welcome to ${brand.name}</title>
         <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
         <style>
+          :root {
+            --accent: ${brand.accent};
+            --heading: ${brand.heading};
+            --link: ${brand.linkColor};
+            --ink: #0f172a;
+            --ink-soft: #475569;
+            --ink-faint: #94a3b8;
+            --line: #e8ecf3;
+            --card: #ffffff;
+            --surface: #f6f8fc;
+            --ok: #16a34a;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+          }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; }
           body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
+            font-family: var(--font);
+            color: var(--ink);
             background: ${brand.pageBg};
+            min-height: 100vh;
+            padding: 40px 16px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
           }
-          .container {
-            text-align: center;
-            background: white;
-            padding: 40px;
-            border-radius: ${isLite ? '18px' : '10px'};
-            box-shadow: ${isLite ? '0 12px 40px rgba(79,70,229,0.28)' : '0 4px 20px rgba(0,0,0,0.2)'};
-            max-width: 500px;
-            ${isLite ? 'border-top: 5px solid #4f46e5;' : ''}
+          .card {
+            width: 100%;
+            max-width: 720px;
+            background: var(--card);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(15,23,42,0.28), 0 2px 8px rgba(15,23,42,0.12);
+            overflow: hidden;
           }
-          .success-icon {
-            font-size: 64px;
-            color: #4CAF50;
-            margin-bottom: 20px;
-          }
-          h1 { color: #333; margin: 0 0 10px 0; }
-          p { color: #666; margin: 10px 0; }
-          .sub-account-id {
-            background: #f5f5f5;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            margin: 20px 0;
-          }
-          .features {
-            text-align: left;
-            margin: 20px 0;
-            padding: 20px;
-            background: #f9f9f9;
-            border-radius: 5px;
-          }
-          .features li {
-            margin: 8px 0;
-          }
-          .access-box {
-            background: ${brand.boxBg};
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
-            border: 2px solid ${brand.boxBorder};
-          }
-          .access-box h3 {
-            color: ${brand.heading};
-            font-size: 16px;
-            margin-bottom: 12px;
-          }
-          .step-instruction {
-            color: #374151;
-            font-size: 14px;
-            margin: 8px 0;
-            padding-left: 20px;
+          /* Header band */
+          .hero {
             position: relative;
+            padding: 40px 40px 28px;
+            text-align: center;
+            background:
+              radial-gradient(120% 140% at 50% -20%, rgba(255,255,255,0.9), rgba(255,255,255,0) 60%),
+              ${brand.boxBg};
+            border-bottom: 1px solid var(--line);
           }
-          .step-instruction:before {
-            content: "→";
-            position: absolute;
-            left: 0;
-            color: ${brand.accent};
-            font-weight: bold;
+          .badge {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: rgba(22,163,74,0.12); color: var(--ok);
+            font-size: 12px; font-weight: 700; letter-spacing: .02em;
+            padding: 6px 12px; border-radius: 999px; margin-bottom: 18px;
+          }
+          .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(22,163,74,0.18); }
+          .logo { width: 66px; height: 66px; border-radius: 16px; object-fit: contain; background: #fff; box-shadow: 0 4px 14px rgba(15,23,42,0.12); padding: 8px; }
+          .brand-name { margin-top: 12px; font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+          .powered { font-size: 10.5px; font-weight: 600; color: var(--ink-faint); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
+          h1 { font-size: 27px; font-weight: 800; letter-spacing: -.02em; margin: 16px 0 6px; text-wrap: balance; }
+          .hero p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+
+          .body { padding: 28px 40px 36px; }
+
+          /* How to access */
+          .access {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 20px 22px;
+            margin-bottom: 30px;
+          }
+          .access h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--heading); margin: 0 0 14px; }
+          .steps { display: flex; flex-direction: column; gap: 12px; counter-reset: step; }
+          .step { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; color: var(--ink); }
+          .step .n {
+            counter-increment: step; flex: none;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            font-size: 12.5px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+          }
+          .step .n::before { content: counter(step); }
+          .step strong { color: var(--accent); }
+          .access .tip { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-faint); }
+
+          /* Features */
+          .section-label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--heading); margin: 0 0 4px; }
+          .section-sub { margin: 0 0 18px; font-size: 13px; color: var(--ink-soft); }
+          .feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+          .feature-card { border: 1px solid var(--line); border-radius: 13px; padding: 16px 16px 6px; background: var(--card); }
+          .feature-card-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+          .feature-list { list-style: none; margin: 0 0 10px; padding: 0; }
+          .feature-list li { position: relative; padding-left: 22px; margin: 8px 0; font-size: 13px; line-height: 1.45; color: var(--ink-soft); }
+          .feature-list li::before {
+            content: ""; position: absolute; left: 2px; top: 5px;
+            width: 12px; height: 7px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+            transform: rotate(-45deg);
+          }
+
+          /* Footer actions */
+          .footer { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+          .footer .note { font-size: 13px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+          .footer .note .check { color: var(--ok); font-weight: 800; }
+          .btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; padding: 11px 20px; border-radius: 10px; text-decoration: none; transition: filter .15s, transform .05s; }
+          .btn:hover { filter: brightness(1.07); }
+          .btn:active { transform: translateY(1px); }
+
+          @media (max-width: 560px) {
+            body { padding: 20px 12px; }
+            .hero { padding: 30px 22px 24px; }
+            .body { padding: 22px 22px 28px; }
+            h1 { font-size: 23px; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .footer { flex-direction: column; align-items: stretch; }
+            .btn { justify-content: center; }
           }
         </style>
       </head>
       <body>
-        <div class="container">
-          <img src="${brand.icon}" alt="${brand.name}" width="80" height="80" style="margin-bottom: 12px;">
-          <div style="margin-bottom: 16px;">
-            <div style="font-size: 22px; font-weight: 700; color: #111827;">${brand.name}</div>
-            ${brand.poweredBy ? `<div style="font-size: 11px; font-weight: 500; color: #6B7280; letter-spacing: 0.06em; text-transform: uppercase;">Powered by Vaultsuite</div>` : ""}
+        <div class="card">
+          <div class="hero">
+            <div class="badge"><span class="dot"></span> Installation complete</div>
+            <div>
+              <img class="logo" src="${brand.icon}" alt="${brand.name}">
+              <div class="brand-name">${brand.name}</div>
+              ${brand.poweredBy ? `<div class="powered">Powered by Vaultsuite</div>` : ""}
+            </div>
+            <h1>You're connected to ${brand.name}</h1>
+            <p>${successMessage}</p>
           </div>
-          <h1>Connected Successfully!</h1>
-          <p>${successMessage}</p>
-          <div class="sub-account-id">
-            Successfully connected to your account
-          </div>
-          <div class="features">
-            <div class="access-box">
-              <h3>🎯 How to Access ${brand.name}:</h3>
-              <div class="step-instruction">Open your sub-account dashboard</div>
-              <div class="step-instruction">Look for <strong style="color: ${brand.accent};">"${brand.name}"</strong> in the left navigation menu</div>
-              <div class="step-instruction">Click to launch the app</div>
-              <p style="color: #6B7280; font-size: 12px; margin-top: 12px; font-style: italic;">
-                💡 ${brand.name} will appear as a new menu item in your sub-account's left navigation menu
-              </p>
+
+          <div class="body">
+            <div class="access">
+              <h2>Open the app</h2>
+              <div class="steps">
+                <div class="step"><span class="n"></span><span>Go to your sub-account dashboard in HighLevel.</span></div>
+                <div class="step"><span class="n"></span><span>Find <strong>${brand.name}</strong> in the left navigation menu.</span></div>
+                <div class="step"><span class="n"></span><span>Click it to launch the app and start exporting.</span></div>
+              </div>
+              <p class="tip">It appears as a new menu item in your sub-account's left sidebar.</p>
             </div>
 
-            <strong style="display: block; margin-top: 20px;">Available Features:</strong>
-            <ul>
-              <li>📥 Download Conversations with Filters</li>
-              <li>💬 Get Messages with Conversation Context</li>
-              ${isLite ? '' : '<li>📤 Import from CSV/Excel Files</li>'}
-              <li>🚀 Advanced Export with conversationId</li>
-            </ul>
-          </div>
-          <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; margin-top: 25px; border-left: 4px solid #F59E0B;">
-            <p style="color: #92400E; font-size: 13px; font-weight: 600; margin: 0;">
-              ✓ Installation Complete! Close this window and find ${brand.name} in your account's left menu.
-            </p>
-          </div>
+            <p class="section-label">Everything you can export</p>
+            <p class="section-sub">Pick a data type, set your filters, see the price up front, and download — ${isLite ? 'as CSV or JSON' : 'as CSV, JSON, or a shareable document'}.</p>
+            <div class="feature-grid">
+              ${featureCards}
+            </div>
 
-          ${brand.website ? `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #E5E7EB;">
-            <a href="${brand.website}" target="_blank" style="color: ${brand.linkColor}; text-decoration: none; font-size: 14px; font-weight: 600;">
-              🌐 Visit ${brand.name} Website
-            </a>
-          </div>` : ''}
+            <div class="footer">
+              <span class="note"><span class="check">✓</span> You can close this window now.</span>
+              ${brand.website ? `<a class="btn" href="${brand.website}" target="_blank" rel="noopener">Visit ${brand.name} →</a>` : ''}
+            </div>
+          </div>
         </div>
       </body>
       </html>
