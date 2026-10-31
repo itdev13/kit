@@ -525,117 +525,132 @@ router.get('/callback', async (req, res) => {
       // Authorization already completed - show success message
       return res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
-          <title>Authorization Complete - ${brand.name}</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Already Connected — ${brand.name}</title>
           <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
           <style>
+            :root {
+              --accent: ${brand.accent};
+              --heading: ${brand.heading};
+              --link: ${brand.linkColor};
+              --ink: #0f172a;
+              --ink-soft: #475569;
+              --ink-faint: #94a3b8;
+              --line: #e8ecf3;
+              --card: #ffffff;
+              --surface: #f6f8fc;
+              --ok: #16a34a;
+              --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; }
             body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
+              font-family: var(--font);
+              color: var(--ink);
               background: ${brand.pageBg};
+              min-height: 100vh;
+              padding: 40px 16px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              -webkit-font-smoothing: antialiased;
             }
-            .container {
+            .card {
+              width: 100%;
+              max-width: 540px;
+              background: var(--card);
+              border-radius: 20px;
+              box-shadow: 0 24px 60px rgba(15,23,42,0.28), 0 2px 8px rgba(15,23,42,0.12);
+              overflow: hidden;
+            }
+            .hero {
+              padding: 40px 40px 28px;
               text-align: center;
-              background: white;
-              padding: 50px;
-              border-radius: 16px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-              max-width: 550px;
+              background:
+                radial-gradient(120% 140% at 50% -20%, rgba(255,255,255,0.9), rgba(255,255,255,0) 60%),
+                ${brand.boxBg};
+              border-bottom: 1px solid var(--line);
             }
-            .icon {
-              font-size: 80px;
-              margin-bottom: 20px;
+            .badge {
+              display: inline-flex; align-items: center; gap: 7px;
+              background: rgba(22,163,74,0.12); color: var(--ok);
+              font-size: 12px; font-weight: 700; letter-spacing: .02em;
+              padding: 6px 12px; border-radius: 999px; margin-bottom: 18px;
             }
-            h1 {
-              color: #10B981;
-              margin: 0 0 15px 0;
-              font-size: 32px;
+            .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(22,163,74,0.18); }
+            .logo { width: 62px; height: 62px; border-radius: 15px; object-fit: cover; box-shadow: 0 6px 18px rgba(15,23,42,0.22); display: block; margin: 0 auto; }
+            .brand-name { margin-top: 12px; font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+            .powered { font-size: 10.5px; font-weight: 600; color: var(--ink-faint); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
+            h1 { font-size: 25px; font-weight: 800; letter-spacing: -.02em; margin: 16px 0 6px; text-wrap: balance; }
+            .hero p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+            .body { padding: 26px 40px 34px; }
+            .access {
+              background: var(--surface);
+              border: 1px solid var(--line);
+              border-radius: 14px;
+              padding: 20px 22px;
             }
-            p {
-              color: #6B7280;
-              margin: 12px 0;
-              font-size: 16px;
-              line-height: 1.6;
+            .access h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--heading); margin: 0 0 14px; }
+            .steps { display: flex; flex-direction: column; gap: 12px; counter-reset: step; }
+            .step { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; color: var(--ink); text-align: left; }
+            .step .n {
+              counter-increment: step; flex: none;
+              width: 24px; height: 24px; border-radius: 50%;
+              background: var(--accent); color: #fff;
+              font-size: 12.5px; font-weight: 700;
+              display: flex; align-items: center; justify-content: center;
             }
-            .highlight-box {
-              background: ${brand.boxBg};
-              padding: 25px;
-              border-radius: 12px;
-              margin: 25px 0;
-              border: 2px solid ${brand.boxBorder};
-            }
-            .highlight-box h3 {
-              color: ${brand.heading};
-              font-size: 18px;
-              margin: 0 0 15px 0;
-            }
-            .step {
-              color: #374151;
-              font-size: 15px;
-              margin: 10px 0;
-              padding-left: 25px;
-              text-align: left;
-              position: relative;
-            }
-            .step:before {
-              content: "→";
-              position: absolute;
-              left: 0;
-              color: ${brand.accent};
-              font-weight: bold;
-              font-size: 18px;
-            }
-            .tip {
-              background: #FEF3C7;
-              padding: 15px;
-              border-radius: 8px;
-              margin-top: 20px;
-              border-left: 4px solid #F59E0B;
-            }
-            .tip p {
-              color: #92400E;
-              font-size: 14px;
-              font-weight: 600;
-              margin: 0;
+            .step .n::before { content: counter(step); }
+            .step strong { color: var(--accent); }
+            .access .tip { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-faint); }
+            .footer { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+            .footer .note { font-size: 13px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+            .footer .note .check { color: var(--ok); font-weight: 800; }
+            .btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 10px; text-decoration: none; transition: filter .15s; }
+            .btn:hover { filter: brightness(1.07); }
+            @media (max-width: 520px) {
+              body { padding: 20px 12px; }
+              .hero { padding: 30px 22px 24px; }
+              .body { padding: 22px 22px 28px; }
+              h1 { font-size: 22px; }
+              .footer { flex-direction: column; align-items: stretch; }
+              .btn { justify-content: center; }
             }
           </style>
         </head>
         <body>
-          <div class="container">
-            <img src="${brand.icon}" alt="${brand.name}" width="60" height="60" style="margin-bottom: 8px;">
-            <div style="margin-bottom: 12px;">
-              <div style="font-size: 18px; font-weight: 700; color: #111827;">${brand.name}</div>
-              ${brand.poweredBy ? `<div style="font-size: 10px; font-weight: 500; color: #6B7280; letter-spacing: 0.06em; text-transform: uppercase;">Powered by Vaultsuite</div>` : ""}
+          <div class="card">
+            <div class="hero">
+              <div class="badge"><span class="dot"></span> Already connected</div>
+              <div>
+                <img class="logo" src="${brand.icon}" alt="${brand.name}" onerror="this.style.display='none'">
+                <div class="brand-name">${brand.name}</div>
+                ${brand.poweredBy ? `<div class="powered">Powered by Vaultsuite</div>` : ""}
+              </div>
+              <h1>You're all set with ${brand.name}</h1>
+              <p>Your account is already connected — nothing more to do here.</p>
             </div>
-            <div class="icon">✅</div>
-            <h1>Authorization Already Completed!</h1>
-            <p>Your ${brand.name} account has been successfully connected</p>
-
-            <div class="highlight-box">
-              <h3>🎯 How to Access ${brand.name}:</h3>
-              <div class="step">Open your account dashboard</div>
-              <div class="step">Find <strong style="color: ${brand.accent};">"${brand.name}"</strong> in the left sidebar menu</div>
-              <div class="step">Click to launch and start managing conversations</div>
+            <div class="body">
+              <div class="access">
+                <h2>Open the app</h2>
+                <div class="steps">
+                  <div class="step"><span class="n"></span><span>Go to your sub-account dashboard in HighLevel.</span></div>
+                  <div class="step"><span class="n"></span><span>Find <strong>${brand.name}</strong> in the left navigation menu.</span></div>
+                  <div class="step"><span class="n"></span><span>Click it to launch the app and start exporting.</span></div>
+                </div>
+                <p class="tip">It appears as a new menu item in your sub-account's left sidebar.</p>
+              </div>
+              <div class="footer">
+                <span class="note"><span class="check">✓</span> You can safely close this window.</span>
+                ${brand.website ? `<a class="btn" href="${brand.website}" target="_blank" rel="noopener">Visit ${brand.name} →</a>` : ''}
+              </div>
             </div>
-
-            <div class="tip">
-              <p>💡 ${brand.name} appears as a new menu item in your account navigation</p>
-            </div>
-
-            ${brand.website ? `<div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #E5E7EB;">
-              <a href="${brand.website}" target="_blank" style="color: ${brand.linkColor}; text-decoration: none; font-size: 14px; font-weight: 600; display: inline-block; margin-bottom: 15px;">
-                🌐 Visit ${brand.name} Website
-              </a>
-            </div>` : ''}
-            
-            <p style="font-size: 13px; color: #9CA3AF; margin-top: 15px;">
-              You can safely close this window
-            </p>
           </div>
         </body>
         </html>
@@ -648,73 +663,70 @@ router.get('/callback', async (req, res) => {
     // Other errors - show generic error page
     res.status(500).send(`
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
-        <title>Error - ${brand.name}</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Connection Error — ${brand.name}</title>
         <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
         <style>
+          :root {
+            --ink: #0f172a; --ink-soft: #475569; --ink-faint: #94a3b8;
+            --line: #e8ecf3; --card: #ffffff; --danger: #dc2626; --danger-bg: #fef2f2;
+            --accent: ${brand.accent}; --link: ${brand.linkColor};
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+          }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: ${brand.pageBg};
+            font-family: var(--font); color: var(--ink);
+            background: ${brand.pageBg}; min-height: 100vh;
+            padding: 40px 16px; display: flex; align-items: center; justify-content: center;
+            -webkit-font-smoothing: antialiased;
           }
-          .container {
-            text-align: center;
-            background: white;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            max-width: 500px;
-          }
-          .icon { font-size: 64px; margin-bottom: 20px; }
-          h1 { color: #EF4444; margin: 0 0 15px 0; }
-          p { color: #6B7280; margin: 10px 0; }
-          .error-detail {
-            background: #FEE2E2;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            color: #991B1B;
-            font-size: 14px;
-          }
-          a {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 12px 24px;
-            background: #2563EB;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: background 0.3s;
-          }
-          a:hover { background: #1D4ED8; }
+          .card { width: 100%; max-width: 500px; background: var(--card); border-radius: 20px; box-shadow: 0 24px 60px rgba(15,23,42,0.28), 0 2px 8px rgba(15,23,42,0.12); overflow: hidden; }
+          .hero { padding: 36px 36px 24px; text-align: center; background: radial-gradient(120% 140% at 50% -20%, rgba(255,255,255,0.9), rgba(255,255,255,0) 60%), var(--danger-bg); border-bottom: 1px solid var(--line); }
+          .badge { display: inline-flex; align-items: center; gap: 7px; background: rgba(220,38,38,0.1); color: var(--danger); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; margin-bottom: 18px; }
+          .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 4px rgba(220,38,38,0.15); }
+          .logo { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; box-shadow: 0 6px 18px rgba(15,23,42,0.22); display: block; margin: 0 auto; }
+          .brand-name { margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--ink); }
+          .powered { font-size: 10px; font-weight: 600; color: var(--ink-faint); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
+          h1 { font-size: 23px; font-weight: 800; letter-spacing: -.02em; margin: 14px 0 6px; }
+          .hero p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+          .body { padding: 24px 36px 32px; }
+          .detail { background: var(--danger-bg); border: 1px solid #fecaca; color: #991b1b; font-size: 13px; border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; word-break: break-word; }
+          .actions { display: flex; flex-direction: column; gap: 10px; }
+          .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 11px 18px; border-radius: 10px; text-decoration: none; transition: filter .15s; }
+          .btn-primary { background: var(--accent); color: #fff; }
+          .btn-primary:hover { filter: brightness(1.07); }
+          .btn-ghost { color: var(--link); }
+          .btn-ghost:hover { text-decoration: underline; }
+          .close { margin: 18px 0 0; text-align: center; font-size: 12.5px; color: var(--ink-faint); }
         </style>
       </head>
       <body>
-        <div class="container">
-          <img src="${brand.icon}" alt="${brand.name}" width="60" height="60" style="margin-bottom: 8px;">
-          <div style="margin-bottom: 12px;">
-            <div style="font-size: 18px; font-weight: 700; color: #111827;">${brand.name}</div>
-            ${brand.poweredBy ? `<div style="font-size: 10px; font-weight: 500; color: #6B7280; letter-spacing: 0.06em; text-transform: uppercase;">Powered by Vaultsuite</div>` : ""}
+        <div class="card">
+          <div class="hero">
+            <div class="badge"><span class="dot"></span> Connection error</div>
+            <div>
+              <img class="logo" src="${brand.icon}" alt="${brand.name}" onerror="this.style.display='none'">
+              <div class="brand-name">${brand.name}</div>
+              ${brand.poweredBy ? `<div class="powered">Powered by Vaultsuite</div>` : ""}
+            </div>
+            <h1>We couldn't finish connecting</h1>
+            <p>Something went wrong while connecting ${brand.name}. Please try installing again.</p>
           </div>
-          <div class="icon">⚠️</div>
-          <h1>Connection Failed</h1>
-          <p>We encountered an error while connecting ${brand.name}</p>
-          <div class="error-detail">
-            ${error.message}
+          <div class="body">
+            <div class="detail">${error.message}</div>
+            <div class="actions">
+              ${brand.website ? `<a class="btn btn-primary" href="${brand.website}" target="_blank" rel="noopener">Try again</a>` : ''}
+              ${brand.website ? `<a class="btn btn-ghost" href="${brand.website}" target="_blank" rel="noopener">Visit ${brand.name} website →</a>` : ''}
+            </div>
+            <p class="close">If this keeps happening, contact support and we'll help you connect.</p>
           </div>
-      ${brand.website ? `<a href="https://marketplace.gohighlevel.com/integration/694f93f8a6babf0c821b1356">Try Again</a>` : ''}
-
-          ${brand.website ? `<div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #E5E7EB;">
-            <a href="${brand.website}" target="_blank" style="color: #fff; text-decoration: none; font-size: 14px; font-weight: 600;">
-              🌐 Visit ${brand.name} Website
-            </a>
-          </div>` : ''}
         </div>
       </body>
       </html>
