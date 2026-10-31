@@ -124,7 +124,7 @@ router.get('/callback', async (req, res) => {
         linkColor: '#4f46e5'
       }
     : {
-        name: 'ExportKit', icon: '/assets/icon.png', website: 'https://exportkit.vaultsuite.store', poweredBy: true,
+        name: 'ExportKit', icon: '/assets/icon.png', website: 'https://export.vaultsuite.store', poweredBy: true,
         // Premium "ExportKit": EXACT current hardcoded colors so the page renders byte-for-byte identically.
         pageBg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         boxBg: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',

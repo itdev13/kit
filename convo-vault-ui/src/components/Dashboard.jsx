@@ -294,48 +294,37 @@ export default function Dashboard() {
         {/* Updates Banner */}
         {/* <UpdatesBanner /> */}
 
-        {/* Price Drop Promo Strip */}
+        {/* Price Drop Promo Strip — single compact row: badge · headline · inline tier chips · auto-applied. */}
         <div className="mb-3 rounded-xl overflow-hidden border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 relative">
-          <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-emerald-100/60 to-transparent pointer-events-none"></div>
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-emerald-300/20 rounded-full blur-3xl pointer-events-none"></div>
-          <div className="relative px-4 py-2.5 flex items-center gap-3 flex-wrap">
-            <div className="relative flex-shrink-0 flex items-center gap-2">
-              <span className="text-xl leading-none">🎉</span>
-              <span className="inline-flex items-center text-[10px] font-bold bg-emerald-600 text-white px-2 py-1 rounded-md uppercase tracking-wider shadow-sm">
-                Price Drop
-              </span>
+          <div className="absolute -top-8 -right-8 w-32 h-32 bg-emerald-300/20 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="relative px-3.5 py-2 flex items-center gap-x-3 gap-y-1.5 flex-wrap">
+            <span className="relative inline-flex items-center text-[10px] font-bold bg-emerald-600 text-white px-2 py-1 rounded-md uppercase tracking-wider shadow-sm flex-shrink-0">
+              Price Drop
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full"></span>
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <p className="text-sm text-gray-800">
-                <span className="font-semibold text-emerald-900">Save up to {MAX_SAVINGS_PCT}% on messages.</span>
-                <span className="text-gray-700 ml-1.5">
-                  SMS, WhatsApp &amp; email get cheaper the more you export — discount auto-applied at estimate time.
-                </span>
-              </p>
-              {/* Tier chips: live price + savings vs the $0.018 base, driven by the shared pricing constant. */}
-              <div className="hidden sm:flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {SAVINGS_TIERS.map((t) => (
-                  <span
-                    key={t.label}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-white/80 px-2 py-0.5 rounded-md border border-emerald-200"
-                  >
-                    <strong className="text-emerald-900">{t.label}</strong>
-                    <span className="text-emerald-700">{t.price}</span>
-                    <span className="text-[10px] font-bold bg-emerald-600 text-white px-1 py-px rounded">
-                      Save {t.savePct}%
-                    </span>
+            </span>
+            <p className="text-sm font-semibold text-emerald-900 flex-shrink-0">
+              Save up to {MAX_SAVINGS_PCT}% on messages
+            </p>
+            {/* Tier chips: live price + savings vs the $0.018 base, driven by the shared pricing constant. */}
+            <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+              {SAVINGS_TIERS.map((t) => (
+                <span
+                  key={t.label}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-white/80 px-2 py-0.5 rounded-md border border-emerald-200"
+                >
+                  <strong className="text-emerald-900">{t.label}</strong>
+                  <span className="text-emerald-700">{t.price}</span>
+                  <span className="text-[10px] font-bold bg-emerald-600 text-white px-1 py-px rounded">
+                    −{t.savePct}%
                   </span>
-                ))}
-              </div>
+                </span>
+              ))}
             </div>
-            <div className="hidden md:flex items-center gap-1.5 flex-shrink-0 self-start">
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-white px-2 py-1 rounded-md border border-emerald-200">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                Auto-applied
-              </span>
-            </div>
+            <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-white px-2 py-1 rounded-md border border-emerald-200 flex-shrink-0 ml-auto">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+              Auto-applied
+            </span>
           </div>
         </div>
 
@@ -404,7 +393,7 @@ export default function Dashboard() {
                   White-label
                 </span>
               </div>
-              <p className="text-violet-50 text-xs truncate">White-label helpdesk — turn every message into a tracked support ticket. Resell as your own.</p>
+              <p className="text-violet-50 text-xs truncate">White-label helpdesk — chat widget &amp; support forms turn every message into a tracked ticket. Resell as your own.</p>
             </div>
             <a
               href="https://marketplace.gohighlevel.com/integration/6a42b01a904c53a589aae692"
