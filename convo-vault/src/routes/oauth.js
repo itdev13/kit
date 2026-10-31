@@ -269,67 +269,78 @@ router.get('/callback', async (req, res) => {
       var successMessage = `Successfully connected to your account`;
     }
 
-    // Feature catalog shown on the welcome page. Grouped the way the in-app sidebar groups them, so
-    // what a new user reads here matches what they'll see. Import features are premium-only (gated by
-    // isLite). Everything is brand-aware via the `brand` object above.
-    const featureGroups = [
-      {
-        title: 'Conversations',
-        items: [
-          'Messages — full history with channel, date &amp; user filters',
-          'Activity Messages &amp; Group Messages',
-          'All Contact Communication in one bundle',
-          'Messages by Tag',
-          'Call Transcriptions &amp; Call Recordings',
-        ],
-      },
-      {
-        title: 'Contacts &amp; CRM',
-        items: [
-          'Contacts (with custom fields)',
-          'Opportunities &amp; Stage History',
-          'Form Submissions',
-        ],
-      },
-      {
-        title: 'Content',
-        items: [
-          'Notes (account-wide) &amp; Notes by Tag',
-          'Tasks, Templates &amp; Links',
-          'Voice AI call logs',
-          'Custom Fields, Custom Values &amp; Tags',
-        ],
-      },
-      {
-        title: 'Commerce',
-        items: [
-          'Appointments &amp; Calendars',
-          'Invoices, Payment Orders &amp; Transactions',
-          'Subscriptions, Surveys &amp; Products',
-          'Businesses &amp; Media Files',
-        ],
-      },
-    ];
-    if (!isLite) {
-      featureGroups.push({
-        title: 'Import &amp; more',
-        items: [
-          'Import Contacts, Notes, Opportunities &amp; Tasks from CSV',
-          'Import Custom Fields &amp; Custom Values',
-          'Contact timeline as a shareable PDF / HTML document',
-          'Volume discounts — the more you export, the less per record',
-        ],
-      });
-    } else {
-      featureGroups.push({
-        title: 'Output',
-        items: [
-          'Export to CSV or JSON',
-          'Advanced export with conversationId',
-          'Volume discounts on every export',
-        ],
-      });
-    }
+    // Feature catalog shown on the welcome page, grouped like the in-app sidebar so what a new user
+    // reads here matches what they'll actually see. The lite "Export Messages" app ONLY exports
+    // messages/conversations — it does NOT have Contacts/Content/Commerce exports or imports — so lite
+    // gets a message-only catalog. Premium "ExportKit" gets the full set. Brand-aware via `brand`.
+    const featureGroups = isLite
+      ? [
+          {
+            title: 'Conversations',
+            items: [
+              'Messages — full history with channel, date &amp; user filters',
+              'SMS, WhatsApp, Email, Facebook &amp; Instagram',
+              'Activity Messages &amp; Group Messages',
+              'All Contact Communication in one bundle',
+            ],
+          },
+          {
+            title: 'Filters &amp; Output',
+            items: [
+              'Date range, channel &amp; message-type filters',
+              'Export to CSV or JSON',
+              'Advanced export with conversationId',
+              'Email metadata (Subject, From, To, CC, BCC)',
+            ],
+          },
+        ]
+      : [
+          {
+            title: 'Conversations',
+            items: [
+              'Messages — full history with channel, date &amp; user filters',
+              'Activity Messages &amp; Group Messages',
+              'All Contact Communication in one bundle',
+              'Messages by Tag',
+              'Call Transcriptions &amp; Call Recordings',
+            ],
+          },
+          {
+            title: 'Contacts &amp; CRM',
+            items: [
+              'Contacts (with custom fields)',
+              'Opportunities &amp; Stage History',
+              'Form Submissions',
+            ],
+          },
+          {
+            title: 'Content',
+            items: [
+              'Notes (account-wide) &amp; Notes by Tag',
+              'Tasks, Templates &amp; Links',
+              'Voice AI call logs',
+              'Custom Fields, Custom Values &amp; Tags',
+            ],
+          },
+          {
+            title: 'Commerce',
+            items: [
+              'Appointments &amp; Calendars',
+              'Invoices, Payment Orders &amp; Transactions',
+              'Subscriptions, Surveys &amp; Products',
+              'Businesses &amp; Media Files',
+            ],
+          },
+          {
+            title: 'Import &amp; more',
+            items: [
+              'Import Contacts, Notes, Opportunities &amp; Tasks from CSV',
+              'Import Custom Fields &amp; Custom Values',
+              'Contact timeline as a shareable PDF / HTML document',
+              'Volume discounts — the more you export, the less per record',
+            ],
+          },
+        ];
 
     const featureCards = featureGroups.map((g) => `
               <div class="feature-card">
