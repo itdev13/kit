@@ -503,7 +503,7 @@ export default function Dashboard() {
                 key={m.key}
                 onClick={() => switchMode(m.key)}
                 className={`
-                  group relative flex items-center gap-3 px-5 pt-3 pb-4 rounded-t-xl transition-all
+                  group relative flex items-center gap-2.5 px-4 pt-2 pb-2.5 rounded-t-xl transition-all
                   ${active
                     ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg z-10'
                     : 'bg-white/70 hover:bg-white text-gray-600 border border-gray-200 border-b-0'
@@ -512,15 +512,15 @@ export default function Dashboard() {
               >
                 {/* Icon */}
                 <div className={`
-                  w-9 h-9 rounded-lg flex items-center justify-center transition-colors
+                  w-7 h-7 rounded-lg flex items-center justify-center transition-colors
                   ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500 group-hover:text-gray-700'}
                 `}>
                   {m.key === 'export' ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12" />
                     </svg>
                   )}
@@ -548,7 +548,7 @@ export default function Dashboard() {
                 key={t.key}
                 onClick={() => { setActiveTab(t.key); setShowConversationView(false); }}
                 className={`
-                  group relative flex items-center gap-3 px-5 pt-3 pb-4 rounded-t-xl transition-all
+                  group relative flex items-center gap-2.5 px-4 pt-2 pb-2.5 rounded-t-xl transition-all
                   ${active
                     ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg z-10'
                     : 'bg-white/70 hover:bg-white text-gray-600 border border-gray-200 border-b-0'
@@ -556,7 +556,7 @@ export default function Dashboard() {
                 `}
               >
                 <div className={`
-                  w-9 h-9 rounded-lg flex items-center justify-center text-lg transition-colors
+                  w-7 h-7 rounded-lg flex items-center justify-center text-base transition-colors
                   ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500 group-hover:text-gray-700'}
                 `}>
                   {t.icon}
