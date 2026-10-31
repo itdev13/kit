@@ -639,16 +639,16 @@ export default function Dashboard() {
                       {group.label && (
                         <button
                           onClick={() => toggleGroup(group.label)}
-                          className="w-full group flex items-center gap-1.5 px-2.5 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 select-none transition-colors"
+                          className="w-full group flex items-center gap-2 px-2.5 pt-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-600 hover:text-gray-900 select-none transition-colors"
                         >
                           <svg
-                            className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`}
+                            className={`w-3.5 h-3.5 flex-shrink-0 text-gray-500 group-hover:text-gray-700 transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`}
                             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
                           >
                             <path d="M6 9l6 6 6-6" />
                           </svg>
                           <span className="flex-1 text-left">{group.label}</span>
-                          <span className="text-[10px] font-semibold text-gray-300 group-hover:text-gray-400 tabular-nums">{group.items.length}</span>
+                          <span className="min-w-[20px] text-center text-[10px] font-semibold text-gray-500 bg-gray-200/70 group-hover:bg-gray-200 group-hover:text-gray-700 rounded-full px-1.5 py-0.5 tabular-nums transition-colors">{group.items.length}</span>
                         </button>
                       )}
                       {!collapsed && (
