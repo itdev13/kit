@@ -445,7 +445,8 @@ async function fetchTemplatesPage(locationId, accessToken, skip, filters = {}) {
  * driver advances the cursor one window at a time).
  */
 async function fetchAppointmentsWindow(locationId, accessToken, startTimeMs, endTimeMs, filters = {}) {
-  const params = { locationId, startTime: startTimeMs, endTime: endTimeMs };
+  // GHL requires startTime & endTime as STRING ms timestamps — numbers return 422.
+  const params = { locationId, startTime: String(startTimeMs), endTime: String(endTimeMs) };
   if (filters.calendarId) params.calendarId = filters.calendarId;
   if (filters.groupId) params.groupId = filters.groupId;
 
@@ -3137,8 +3138,12 @@ exports.handler = async (event, context) => {
       // page by month-long windows across the job's date range. The cursor is the next window's
       // start (ms). One window per invocation chunk keeps per-call memory bounded.
       const WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-      const rangeStart = job.filters?.startDate ? new Date(job.filters.startDate).getTime() : Date.now() - WINDOW_MS;
-      const rangeEnd = job.filters?.endDate ? new Date(job.filters.endDate).getTime() : Date.now();
+      // When no date range is given ("export all"), scan a wide window (~10yr back to ~2yr ahead) so
+      // we don't silently limit the export to the last 30 days.
+      const TEN_YEARS_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+      const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+      const rangeStart = job.filters?.startDate ? new Date(job.filters.startDate).getTime() : Date.now() - TEN_YEARS_MS;
+      const rangeEnd = job.filters?.endDate ? new Date(job.filters.endDate).getTime() : Date.now() + TWO_YEARS_MS;
       let windowStart = cursor ? parseInt(cursor) : rangeStart;
 
       while (windowStart < rangeEnd && records.length < BATCH_SIZE) {

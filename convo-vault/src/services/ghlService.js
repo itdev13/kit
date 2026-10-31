@@ -1864,8 +1864,15 @@ class GHLService {
       if (options.calendarId) params.calendarId = options.calendarId;
       if (options.userId) params.userId = options.userId;
       if (options.groupId) params.groupId = options.groupId;
-      if (options.startTime) params.startTime = options.startTime;
-      if (options.endTime) params.endTime = options.endTime;
+      // GHL REQUIRES startTime & endTime (as string ms timestamps) — omitting them returns 422
+      // "startTime must be a string". When the user leaves the range blank ("export all"), default to a
+      // wide window: ~10 years back to ~2 years ahead, which covers virtually all appointments.
+      const TEN_YEARS_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+      const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+      const startMs = options.startTime != null ? options.startTime : (Date.now() - TEN_YEARS_MS);
+      const endMs = options.endTime != null ? options.endTime : (Date.now() + TWO_YEARS_MS);
+      params.startTime = String(startMs);
+      params.endTime = String(endMs);
 
       const response = await this.apiRequest('GET', '/calendars/events', locationId, null, params);
       const events = response.events || [];
